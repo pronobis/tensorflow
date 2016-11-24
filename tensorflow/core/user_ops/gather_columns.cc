@@ -1,7 +1,6 @@
 #include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/framework/shape_inference.h"
+//#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/platform/prefetch.h"
 
@@ -19,26 +18,26 @@ REGISTER_OP("GatherColumns")
 template <typename T>
 class GatherColumnsOp : public OpKernel {
  public:
-  explicit GatherColumnsOp(OpKernelConstruction* c) : OpKernel(c) {}
+  explicit GatherColumnsOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
-  void Compute(OpKernelContext* c) override {
+  void Compute(OpKernelContext* ctx) override {
 
     //--Grab the input tensor - params--//
-    const Tensor& params = c->input(0);
+    const Tensor& params = ctx->input(0);
 
     //--Grab the input tensor - indices--//
-    const Tensor& indices = c->input(1);
+    const Tensor& indices = ctx->input(1);
     auto ind_flat = indices.flat<int32>();
 
-    OP_REQUIRES(c, TensorShapeUtils::IsVectorOrHigher(params.shape()),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsVectorOrHigher(params.shape()),
                 errors::InvalidArgument("params must be at least a vector"));
-    OP_REQUIRES(c, TensorShapeUtils::IsVector(indices.shape()),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(indices.shape()),
                 errors::InvalidArgument("indices must be a vector, but it a: ", indices.dims(), "D Tensor."));
 
     const TensorShape& params_shape(params.shape());
 
     OP_REQUIRES(
-        c, params_shape.dims() <= 2,
+        ctx, params_shape.dims() <= 2,
         errors::InvalidArgument("params must be 1D or 2D but it is: ", params_shape.dims(), "D"));
 
     TensorShape output_shape(params_shape);
@@ -46,6 +45,9 @@ class GatherColumnsOp : public OpKernel {
     int64 params_rows;
     int64 params_cols;
     int64 indices_size= indices.dim_size(0);
+
+    OP_REQUIRES(ctx, indices_size > 0,
+                errors::InvalidArgument("indices cannot be a empty."));
 
     if(params_shape.dims() == 1)
     {
@@ -66,17 +68,17 @@ class GatherColumnsOp : public OpKernel {
     }
 
     //--Check indices[i] ∈ (0, params_cols], ∀i--//
-    for(int i=0; i < indices_size; i++)
+    for(int64 i=0; i < indices_size; i++)
     {
       //--TODO: Should look for a more optimal way to do this, or maybe there is a TF macro for this--//
       OP_REQUIRES(
-        c, ind_flat(i) >= 0 && ind_flat(i) < params_cols,
+        ctx, ind_flat(i) >= 0 && ind_flat(i) < params_cols,
         errors::InvalidArgument("indices(", i, "): ", ind_flat(i), " is not in range (0, ", params_cols, "]."));
     }
 
     //--Create an output tensor--//
     Tensor* output_tensor = NULL;
-    OP_REQUIRES_OK(c, c->allocate_output(0, output_shape, &output_tensor));
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, output_shape, &output_tensor));
 
     //--Single column tensor, indices must include it, so just copy param tensor to output tensor--//
     if(params_cols == 1)
@@ -111,7 +113,7 @@ class GatherColumnsOp : public OpKernel {
         }
         cons_cols_counter.push_back(cols);
       }
-      //--TODO: Check is SUM(cons_cols_counter) == indices_size--//
+      //--TODO: Check if SUM(cons_cols_counter) == indices_size--//
     }
     else
     {
@@ -125,9 +127,10 @@ class GatherColumnsOp : public OpKernel {
       auto output_flat = output_tensor->flat<T>();
       auto params_flat = params.flat<T>();
 
-      //--Mem-copy columns, bunching consecutive columns together, one row at a time--//
+      //--Mem-copy columns, bunching consecutive columns together--//
       for(int i=0, col=0; i < cons_cols_counter_size; i++)
       {
+        //--If not final iteration--//
         if (i + 1 < cons_cols_counter_size)
         {
           //--Prefetch the next source (params_flat) and destination (output_flat) memory addresses--//
@@ -135,7 +138,7 @@ class GatherColumnsOp : public OpKernel {
           port::prefetch<port::PREFETCH_HINT_T0>(&params_flat(ind_flat(col + cons_cols_counter[i])));
         }
 
-        //--Mem-copy columns--//
+        //--Mem-copy column(s)--//
         memcpy(&output_flat(col), &params_flat(ind_flat(col)), (cons_cols_counter[i] * sizeof(T)));
         col += cons_cols_counter[i];
       }
@@ -150,6 +153,7 @@ class GatherColumnsOp : public OpKernel {
       {
         for(int i=0, col=0; i < cons_cols_counter_size; i++)
         {
+          //--If not final iteration--//
           if (i + 1 < cons_cols_counter_size)
           {
             //--Prefetch the next source (params_matrix) and destination (output_matrix) memory addresses--//
@@ -157,7 +161,7 @@ class GatherColumnsOp : public OpKernel {
             port::prefetch<port::PREFETCH_HINT_T0>(&params_matrix(row, ind_flat(col + cons_cols_counter[i])));
           }
 
-          //--Mem-copy columns--//
+          //--Mem-copy column(s)--//
           memcpy(&output_matrix(row, col), &params_matrix(row, ind_flat(col)), (cons_cols_counter[i] * sizeof(T)));
           col += cons_cols_counter[i];
         }
