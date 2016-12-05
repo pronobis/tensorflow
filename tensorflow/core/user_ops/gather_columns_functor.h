@@ -1,6 +1,8 @@
 #ifndef TENSORFLOW_USEROPS_GATHER_COLUMNS_FUNCTOR_H_
 #define TENSORFLOW_USEROPS_GATHER_COLUMNS_FUNCTOR_H_
 
+//#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+
 #include "tensorflow/core/framework/tensor_types.h"
 #include "../kernels/bounds_check.h" //--TODO: Currently <#include "tensorflow/core/kernels/bounds_check.h"> gives an error. Need to check and fix.
 #include "tensorflow/core/platform/prefetch.h"
@@ -100,6 +102,15 @@ namespace tensorflow {
     template <typename Device, typename T, typename IndT>
     struct GatherColumnsFunctor {
       int64 operator()(const Device& dvc, typename TTypes<T>::ConstMatrix params,
+                       typename TTypes<IndT>::ConstFlat indices,
+                       int64 params_rows,
+                       int64 params_cols,
+                       typename TTypes<T>::Matrix output);
+    };
+
+    template <typename T, typename IndT>
+    struct GatherColumnsFunctor<CPUDevice, T, IndT> {
+      int64 operator()(const CPUDevice& dvc, typename TTypes<T>::ConstMatrix params,
                        typename TTypes<IndT>::ConstFlat indices,
                        int64 params_rows,
                        int64 params_cols,
