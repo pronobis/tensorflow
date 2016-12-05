@@ -1,24 +1,28 @@
 #include "tensorflow/core/framework/op.h"
-//#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "../kernels/bounds_check.h" //--TODO: Currently <#include "tensorflow/core/kernels/bounds_check.h"> gives an error. Need to check and fix.
 #include "tensorflow/core/platform/prefetch.h"
 
 using namespace tensorflow;
 using namespace std;
 
-
+//--TODO: shape inference--//
 REGISTER_OP("GatherColumns")
-    .Input("params: T")
-    .Input("indices: Index")
-    .Output("columns: T")
-    .Attr("T: type")
-    .Attr("Index: {int32,int64}");
+.Input("params: T")
+.Input("indices: IndT")
+.Output("columns: T")
+.Attr("T: type")
+.Attr("IndT: {int32,int64}");
 
-template <typename T>
+template <typename T, typename IndT>
 class GatherColumnsOp : public OpKernel {
- public:
-  explicit GatherColumnsOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+public:
+  explicit GatherColumnsOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+    const DataType data_t = DataTypeToEnum<T>::v();
+    const DataType index_t = DataTypeToEnum<IndT>::v();
+    OP_REQUIRES_OK(ctx, ctx->MatchSignature({data_t, index_t}, {data_t}));
+  }
 
   void Compute(OpKernelContext* ctx) override {
 
@@ -27,27 +31,27 @@ class GatherColumnsOp : public OpKernel {
 
     //--Grab the input tensor - indices--//
     const Tensor& indices = ctx->input(1);
-    auto ind_flat = indices.flat<int32>();
+    auto ind_flat = indices.flat<IndT>();
 
     OP_REQUIRES(ctx, TensorShapeUtils::IsVectorOrHigher(params.shape()),
                 errors::InvalidArgument("params must be at least a vector"));
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(indices.shape()),
-                errors::InvalidArgument("indices must be a vector, but it a: ", indices.dims(), "D Tensor."));
+                errors::InvalidArgument("indices must be a vector, but it is a: ", indices.dims(), "D Tensor."));
 
     const TensorShape& params_shape(params.shape());
 
     OP_REQUIRES(
-        ctx, params_shape.dims() <= 2,
-        errors::InvalidArgument("params must be 1D or 2D but it is: ", params_shape.dims(), "D"));
+          ctx, params_shape.dims() <= 2,
+          errors::InvalidArgument("params must be 1D or 2D but it is: ", params_shape.dims(), "D"));
 
     TensorShape output_shape(params_shape);
 
     int64 params_rows;
     int64 params_cols;
-    int64 indices_size= indices.dim_size(0);
+    const int64 indices_size = indices.dim_size(0);
 
     OP_REQUIRES(ctx, indices_size > 0,
-                errors::InvalidArgument("indices cannot be a empty."));
+                errors::InvalidArgument("indices cannot be empty."));
 
     if(params_shape.dims() == 1)
     {
@@ -67,117 +71,106 @@ class GatherColumnsOp : public OpKernel {
       output_shape.set_dim(1, indices_size);
     }
 
-    //--Check indices[i] ∈ (0, params_cols], ∀i--//
-    for(int64 i=0; i < indices_size; i++)
-    {
-      //--TODO: Should look for a more optimal way to do this, or maybe there is a TF macro for this--//
-      OP_REQUIRES(
-        ctx, ind_flat(i) >= 0 && ind_flat(i) < params_cols,
-        errors::InvalidArgument("indices(", i, "): ", ind_flat(i), " is not in range (0, ", params_cols, "]."));
-    }
-
     //--Create an output tensor--//
-    Tensor* output_tensor = NULL;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, output_shape, &output_tensor));
+    Tensor* output = NULL;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, output_shape, &output));
 
-    //--Single column tensor, indices must include it, so just copy param tensor to output tensor--//
+    //--Single column tensor, indices must include it, so just copy params tensor to output tensor--//
     if(params_cols == 1)
     {
-      auto output_flat = output_tensor->flat<T>();
+      auto output_flat = output->flat<T>();
       auto params_flat = params.flat<T>();
 
       memcpy(&output_flat(0), &params_flat(0), (params_rows * sizeof(T)));
       return;
     }
 
-    //--TODO: Check if using gtl::InlinedVector<T, N> has an advantage over std::vector<int>--//
-    std::vector<int> cons_cols_counter;
+    std::vector<int> cons_cols_counter(indices_size, 1);
 
     if(indices_size > 1)
     {
       //--Group consecutive columns together--//
+      //--E.g.:     params_size = 10
+      //--          indices = [7, 8, 9, 2, 0, 4, 5, 3, 1, 5, 6, 7]
+      //--cons_cols_counter = [3, 2, 1, 1, 1, 2, 1, 1, 1, 3, 2, 1]
+
+      int cols;
       for(int c=0; c < indices_size; c++)
       {
-        int cols = 1;
+        //--Check indices[i] ∈ (0, params_cols]--//
+        OP_REQUIRES(
+              ctx, FastBoundsCheck(ind_flat(c), params_cols),
+              errors::InvalidArgument("indices(", c, "): ", ind_flat(c), " is not in range (0, ", params_cols, "]."));
+
+        cols = 1;
         if(c + 1 < indices_size)
         {
-          while(ind_flat(c)+1 == ind_flat(c+1))
+          while(ind_flat(c)+cols == ind_flat(c+cols))
           {
             cols++;
-            c++;
             if(c + 1 >= indices_size)
             {
               break;
             }
           }
         }
-        cons_cols_counter.push_back(cols);
+
+        while(cols > 1)
+        {
+          cons_cols_counter[c++] = cols--;
+        }
       }
-      //--TODO: Check if SUM(cons_cols_counter) == indices_size--//
     }
-    else
+    else //--indices_size == 1--//
     {
-      cons_cols_counter.push_back(1);
+      cons_cols_counter[0] = 1;
     }
 
-    int cons_cols_counter_size = cons_cols_counter.size();
+    auto output_tensor = output->shaped<T, 2>({params_rows, indices_size});
+    auto params_tensor = params.shaped<T, 2>({params_rows, params_cols});
 
-    if(params_shape.dims() == 1)
+    //--Mem-copy columns, bunching consecutive columns together, one row at a time--//
+    for(int row = 0; row < params_rows; row++ )
     {
-      auto output_flat = output_tensor->flat<T>();
-      auto params_flat = params.flat<T>();
-
-      //--Mem-copy columns, bunching consecutive columns together--//
-      for(int i=0, col=0; i < cons_cols_counter_size; i++)
+      for(int col=0; col < indices_size;)
       {
         //--If not final iteration--//
-        if (i + 1 < cons_cols_counter_size)
+        if (col + 1 < indices_size)
         {
-          //--Prefetch the next source (params_flat) and destination (output_flat) memory addresses--//
-          port::prefetch<port::PREFETCH_HINT_T0>(&output_flat(col + cons_cols_counter[i]));
-          port::prefetch<port::PREFETCH_HINT_T0>(&params_flat(ind_flat(col + cons_cols_counter[i])));
+          //--Prefetch the next source (params_matrix) and destination (output_matrix) memory addresses--//
+          port::prefetch<port::PREFETCH_HINT_T0>(&output_tensor(row, col + cons_cols_counter[col]));
+          port::prefetch<port::PREFETCH_HINT_T0>(&params_tensor(row, ind_flat(col + cons_cols_counter[col])));
         }
 
         //--Mem-copy column(s)--//
-        memcpy(&output_flat(col), &params_flat(ind_flat(col)), (cons_cols_counter[i] * sizeof(T)));
-        col += cons_cols_counter[i];
-      }
-    }
-    else if(params_shape.dims() == 2)
-    {
-      auto output_matrix = output_tensor->matrix<T>();
-      auto params_matrix = params.matrix<T>();
-
-      //--Mem-copy columns, bunching consecutive columns together, one row at a time--//
-      for(int row = 0; row < params_rows; row++ )
-      {
-        for(int i=0, col=0; i < cons_cols_counter_size; i++)
-        {
-          //--If not final iteration--//
-          if (i + 1 < cons_cols_counter_size)
-          {
-            //--Prefetch the next source (params_matrix) and destination (output_matrix) memory addresses--//
-            port::prefetch<port::PREFETCH_HINT_T0>(&output_matrix(row, col + cons_cols_counter[i]));
-            port::prefetch<port::PREFETCH_HINT_T0>(&params_matrix(row, ind_flat(col + cons_cols_counter[i])));
-          }
-
-          //--Mem-copy column(s)--//
-          memcpy(&output_matrix(row, col), &params_matrix(row, ind_flat(col)), (cons_cols_counter[i] * sizeof(T)));
-          col += cons_cols_counter[i];
-        }
+        memcpy(&output_tensor(row, col), &params_tensor(row, ind_flat(col)), (cons_cols_counter[col] * sizeof(T)));
+        col += cons_cols_counter[col];
       }
     }
   }
 };
 
-#define REGISTER_GATHERCOLUMNS(type) \
+#define REGISTER_GATHERCOLUMNS_INT32(type) \
   REGISTER_KERNEL_BUILDER(Name("GatherColumns") \
-                              .Device(DEVICE_CPU) \
-                              .TypeConstraint<type>("T"), \
-                          GatherColumnsOp<type>)
+  .Device(DEVICE_CPU) \
+  .TypeConstraint<type>("T") \
+  .TypeConstraint<int32>("IndT"), \
+  GatherColumnsOp<type, int32>)
 
-TF_CALL_ALL_TYPES(REGISTER_GATHERCOLUMNS);
+TF_CALL_ALL_TYPES(REGISTER_GATHERCOLUMNS_INT32);
 
-#undef REGISTER_GATHERCOLUMNS
+#undef REGISTER_GATHERCOLUMNS_INT32
+
+
+#define REGISTER_GATHERCOLUMNS_INT64(type) \
+  REGISTER_KERNEL_BUILDER(Name("GatherColumns") \
+  .Device(DEVICE_CPU) \
+  .TypeConstraint<type>("T") \
+  .TypeConstraint<int64>("IndT"), \
+  GatherColumnsOp<type, int64>)
+
+TF_CALL_ALL_TYPES(REGISTER_GATHERCOLUMNS_INT64);
+
+#undef REGISTER_GATHERCOLUMNS_INT64
 
 
