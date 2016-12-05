@@ -1,0 +1,166 @@
+
+import unittest
+import tensorflow as tf
+import numpy as np
+
+
+class TestMath(unittest.TestCase):
+    gather_columns_module = tf.load_op_library('./gather_columns.so')
+
+    def test_gather_columns_errors(self):
+        # TODO
+        pass
+
+    def test_gather_columns(self):
+        def test(params, indices, dtype, true_output):
+
+            with self.subTest(params=params, indices=indices, dtype=dtype):
+                if dtype == bool:
+                    row1 = row2 = row3 = 1
+                else:
+                    row1 = 1
+                    row2 = 0
+                    row3 = -1
+
+                p1d = tf.constant(params, dtype=dtype)
+                p2d1 = tf.constant(np.array([np.array(params)]), dtype=dtype)
+                p2d2 = tf.constant(np.array([np.array(params) * row1,
+                                             np.array(params) * row2,
+                                             np.array(params) * row3]), dtype=dtype)
+
+                op1d = self.gather_columns_module.gather_columns(p1d, indices)
+                op2d1 = self.gather_columns_module.gather_columns(p2d1, indices)
+                op2d2 = self.gather_columns_module.gather_columns(p2d2, indices)
+
+                with tf.Session() as sess:
+                    out1d = sess.run(op1d)
+                    out2d1 = sess.run(op2d1)
+                    out2d2 = sess.run(op2d2)
+
+                np.testing.assert_array_almost_equal(out1d, true_output)
+                self.assertEqual(dtype.as_numpy_dtype, out1d.dtype)
+
+                true_output_2d1 = [np.array(true_output)]
+                np.testing.assert_array_almost_equal(out2d1, true_output_2d1)
+                self.assertEqual(dtype.as_numpy_dtype, out2d1.dtype)
+
+                true_output_2d2 = [np.array(true_output) * row1,
+                                   np.array(true_output) * row2,
+                                   np.array(true_output) * row3]
+                np.testing.assert_array_almost_equal(out2d2, true_output_2d2)
+                self.assertEqual(dtype.as_numpy_dtype, out2d2.dtype)
+
+
+        float_val = 1.23456789
+        int_val = 123456789
+        int_32_upper = 2147483647
+        int_64_upper = 9223372036854775807
+
+
+        # Single column input tensor
+        # float
+        test([float_val],
+             [0],
+             tf.float32,
+             [float_val])
+        test([float_val],
+             [0],
+             tf.float64,
+             [float_val])
+
+        # int
+        test([int_32_upper],
+             [0],
+             tf.int32,
+             [int_32_upper])
+        test([int_64_upper],
+             [0],
+             tf.int64,
+             [int_64_upper])
+
+        # bool
+        test([True],
+             [0],
+             tf.bool,
+             [True])
+
+        # Single index
+        # float
+        test([float_val, float_val*2, float_val*3],
+             [1],
+             tf.float32,
+             [float_val*2])
+        test([float_val, float_val*2, float_val*3],
+             [1],
+             tf.float64,
+             [float_val*2])
+
+        # int
+        test([int_val, int_val*2, int_val*3],
+             [0],
+             tf.int32,
+             [int_val])
+        test([int_val, int_val*2, int_val*3],
+             [2],
+             tf.int64,
+             [int_val*3])
+
+        # bool
+        test([False, True, False],
+             [2],
+             tf.bool,
+             [False])
+
+        # Multiple indices
+        # float
+        test([float_val, float_val*2, float_val*3, float_val*4],
+             [1, 3, 2],
+             tf.float32,
+             [float_val*2, float_val*4, float_val*3])
+        test([float_val, float_val*2, float_val*3, float_val*4],
+             [1, 3, 2],
+             tf.float64,
+             [float_val*2, float_val*4, float_val*3])
+
+        # int
+        test([int_val, int_val*2, int_val*3, int_val*4],
+             [3, 2, 1, 0],
+             tf.int32,
+             [int_val*4, int_val*3, int_val*2, int_val])
+        test([int_val, int_val*2, int_val*3, int_val*4],
+             [2, 1],
+             tf.int64,
+             [int_val*3, int_val*2])
+
+        # bool
+        test([True, True, False, True, False],
+             [2, 1, 4, 0, 3],
+             tf.bool,
+             [False, True, False, True, True])
+        test([False, False, True, True, False, True],
+             [5, 4, 3, 2, 1, 0],
+             tf.bool,
+             [True, False, True, True, False, False])
+
+        # Indices with consecutive columns
+        # Begining
+        test([float_val*1, float_val*2, float_val*3, float_val*4, float_val*5, float_val*6, float_val*7, float_val*8, float_val*9],
+             [4, 5, 6, 8, 2, 0, 3, 1, 7],
+             tf.float32,
+             [float_val*5, float_val*6, float_val*7, float_val*9, float_val*3, float_val*1, float_val*4, float_val*2, float_val*8])
+
+        # Middle
+        test([int_val*1, int_val*2, int_val*3, int_val*4, int_val*5, int_val*6, int_val*7, int_val*8, int_val*9],
+             [3, 5, 6, 7, 4, 0, 1, 2, 8],
+             tf.int32,
+             [int_val*4, int_val*6, int_val*7, int_val*8, int_val*5, int_val*1, int_val*2, int_val*3, int_val*9])
+
+        # End
+        test([int_val*1, int_val*2, int_val*3, int_val*4, int_val*5, int_val*6, int_val*7, int_val*8, int_val*9],
+             [6, 5, 0, 7, 4, 8, 1, 2, 3],
+             tf.int64,
+             [int_val*7, int_val*6, int_val*1, int_val*8, int_val*5, int_val*9, int_val*2, int_val*3, int_val*4])
+
+
+if __name__ == '__main__':
+    unittest.main()
