@@ -8,6 +8,8 @@
 #include "tensorflow/core/platform/prefetch.h"
 #include "tensorflow/core/platform/types.h"
 
+using namespace std;
+
 namespace tensorflow {
   typedef Eigen::ThreadPoolDevice CPUDevice;
 
@@ -55,16 +57,12 @@ namespace tensorflow {
           }
 
           cols = 1;
-          if(c + 1 < indices_size)
+          while(c + cols < indices_size)
           {
-            while(indices(c)+cols == indices(c+cols))
-            {
+            if(indices(c)+cols == indices(c+cols))
               cols++;
-              if(c + 1 >= indices_size)
-              {
-                break;
-              }
-            }
+            else
+              break;
           }
 
           while(cols > 1)
