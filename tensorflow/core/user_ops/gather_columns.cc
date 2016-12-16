@@ -91,27 +91,23 @@ public:
   }
 };
 
-#define REGISTER_GATHERCOLUMNS_INT32(type) \
+#define REGISTER_GATHERCOLUMNS_ALL(dev, type, index_type) \
   REGISTER_KERNEL_BUILDER(Name("GatherColumns") \
-  .Device(DEVICE_CPU) \
+  .Device(DEVICE_##dev) \
   .TypeConstraint<type>("T") \
-  .TypeConstraint<int32>("IndT"), \
-  GatherColumnsOp<CPUDevice, type, int32>)
+  .TypeConstraint<index_type>("IndT"), \
+  GatherColumnsOp<dev##Device, type, index_type>)
 
-TF_CALL_ALL_TYPES(REGISTER_GATHERCOLUMNS_INT32);
+#define REGISTER_GATHERCOLUMNS_ALL_INDICES(dev, type) \
+  REGISTER_GATHERCOLUMNS_ALL(dev, type, int32);      \
+  REGISTER_GATHERCOLUMNS_ALL(dev, type, int64)
 
-#undef REGISTER_GATHERCOLUMNS_INT32
+#define REGISTER_GATHERCOLUMNS_CPU(type) REGISTER_GATHERCOLUMNS_ALL_INDICES(CPU, type)
 
+//--Registration of the CPU implementations--//
+TF_CALL_ALL_TYPES(REGISTER_GATHERCOLUMNS_CPU);
+TF_CALL_QUANTIZED_TYPES(REGISTER_GATHERCOLUMNS_CPU);
 
-#define REGISTER_GATHERCOLUMNS_INT64(type) \
-  REGISTER_KERNEL_BUILDER(Name("GatherColumns") \
-  .Device(DEVICE_CPU) \
-  .TypeConstraint<type>("T") \
-  .TypeConstraint<int64>("IndT"), \
-  GatherColumnsOp<CPUDevice, type, int64>)
-
-TF_CALL_ALL_TYPES(REGISTER_GATHERCOLUMNS_INT64);
-
-#undef REGISTER_GATHERCOLUMNS_INT64
-
-
+#undef REGISTER_GATHERCOLUMNS_CPU
+#undef REGISTER_GATHERCOLUMNS_ALL_INDICES
+#undef REGISTER_GATHERCOLUMNS_ALL
