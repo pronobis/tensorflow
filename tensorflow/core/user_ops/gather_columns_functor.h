@@ -16,13 +16,26 @@ namespace tensorflow {
     //--Helper method to copy using memcpy()--//
     template <typename T, typename IndT>
     IndT CountAndCopy(typename TTypes<T>::ConstMatrix params,
-                            typename TTypes<IndT>::ConstFlat indices,
-                            int64 params_rows,
-                            int64 params_cols,
-                            typename TTypes<T>::Matrix output) {
+                      typename TTypes<IndT>::ConstFlat indices,
+                      int64 params_rows,
+                      int64 params_cols,
+                      typename TTypes<T>::Matrix output) {
+
+      if(params_cols == 1)
+      {
+        if (indices(0) != 0)
+        {
+          return 0;
+        }
+        else
+        {
+          //--Single column tensor, indices must include it, so just copy params tensor to output tensor and return--//
+          memcpy(&output(0, 0), &params(0, 0), (params_rows * sizeof(T)));
+          return -1;
+        }
+      }
 
       const int64 indices_size = indices.dimension(0);
-
       std::vector<int> cons_cols_counter(indices_size, 1);
 
       if(indices_size > 1)

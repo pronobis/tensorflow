@@ -73,34 +73,21 @@ public:
     Tensor* output = NULL;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, output_shape, &output));
 
-    //--Single column tensor, indices must include it, so just copy params tensor to output tensor--//
-    if(params_cols == 1)
-    {
-      auto output_flat = output->flat<T>();
-      auto params_flat = params.flat<T>();
+    auto output_tensor = output->shaped<T, 2>({params_rows, indices_size});
+    auto params_tensor = params.shaped<T, 2>({params_rows, params_cols});
+    auto indices_flat = indices.flat<IndT>();
 
-      memcpy(&output_flat(0), &params_flat(0), (params_rows * sizeof(T)));
-      return;
-    }
-    else
-    {
+    functor::GatherColumnsFunctor<Device, T, IndT> functor;
+    int64 bad_i = functor(ctx->eigen_device<Device>(),
+                          params_tensor,
+                          indices_flat,
+                          params_rows,
+                          params_cols,
+                          output_tensor);
 
-      auto output_tensor = output->shaped<T, 2>({params_rows, indices_size});
-      auto params_tensor = params.shaped<T, 2>({params_rows, params_cols});
-      auto indices_flat = indices.flat<IndT>();
-
-      functor::GatherColumnsFunctor<Device, T, IndT> functor;
-      int64 bad_i = functor(ctx->eigen_device<Device>(),
-                            params_tensor,
-                            indices_flat,
-                            params_rows,
-                            params_cols,
-                            output_tensor);
-
-      OP_REQUIRES(ctx, bad_i < 0,
-                  errors::InvalidArgument("indices(", bad_i, "): ", indices_flat(bad_i),
-                                          " is not in range (0, ", params_cols, "]."));
-    }
+    OP_REQUIRES(ctx, bad_i < 0,
+                errors::InvalidArgument("indices(", bad_i, "): ", indices_flat(bad_i),
+                                        " is not in range (0, ", params_cols, "]."));
   }
 };
 
