@@ -41,9 +41,12 @@ class TestMath(unittest.TestCase):
                     # For testing only the overhead time
                     #p2d2 = tf.constant(params, dtype=dtype)
 
-                op1d = self.gather_columns_module.gather_columns(p1d, indices)
-                op2d1 = self.gather_columns_module.gather_columns(p2d1, indices)
-                op2d2 = self.gather_columns_module.gather_columns(p2d2, indices)
+                ind_32 = tf.constant(indices, dtype=tf.int32)
+                ind_64 = tf.constant(indices, dtype=tf.int64)
+
+                op1d = self.gather_columns_module.gather_columns(p1d, ind_64)
+                op2d1 = self.gather_columns_module.gather_columns(p2d1, ind_32)
+                op2d2 = self.gather_columns_module.gather_columns(p2d2, ind_64)
 
                 with tf.Session() as sess:
                     out1d = sess.run(op1d)
@@ -184,11 +187,17 @@ class TestMath(unittest.TestCase):
              tf.int64,
              [int_val*7, int_val*6, int_val*1, int_val*8, int_val*5, int_val*9, int_val*2, int_val*3, int_val*4])
 
-        # Large case for performance test
-        test(list(range(1, self.num_cols+1)),
-             list(range(self.num_cols-1, -1, -1)),
+        # Beginning, middle and end
+        test([int_val*1, int_val*2, int_val*3, int_val*4, int_val*5, int_val*6, int_val*7, int_val*8, int_val*9, int_val*10, int_val*11, int_val*12],
+             [5, 6, 7, 11, 1, 2, 3, 0, 4, 8, 9, 10],
              tf.int64,
-             list(range(self.num_cols, 0, -1)),
+             [int_val*6, int_val*7, int_val*8, int_val*12, int_val*2, int_val*3, int_val*4, int_val*1, int_val*5, int_val*9, int_val*10, int_val*11])
+
+        # Large case for performance test
+        test(list(range(1, self.num_cols+1)), # [1, 2, 3, ..., n-1, n]
+             list(range(self.num_cols-1, -1, -1)), # [n-1, n-2, n-3, ..., 1, 0]
+             tf.int64,
+             list(range(self.num_cols, 0, -1)), # [n, n-1, n-2, ..., 2, 1]
              True)
 
 if __name__ == '__main__':
