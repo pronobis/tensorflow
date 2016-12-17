@@ -1,10 +1,8 @@
 #ifndef TENSORFLOW_USEROPS_GATHER_COLUMNS_FUNCTOR_H_
 #define TENSORFLOW_USEROPS_GATHER_COLUMNS_FUNCTOR_H_
 
-//#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-
 #include "tensorflow/core/framework/tensor_types.h"
-#include "../kernels/bounds_check.h" //--TODO: Currently <#include "tensorflow/core/kernels/bounds_check.h"> gives an error. Need to check and fix.
+#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/platform/prefetch.h"
 #include "tensorflow/core/platform/types.h"
 
