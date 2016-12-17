@@ -73,7 +73,10 @@ namespace tensorflow {
       }
       else //--indices_size == 1--//
       {
-        cons_cols_counter[0] = 1;
+        if (!FastBoundsCheck(indices(0), params_cols))
+          return 0;
+        else
+          cons_cols_counter[0] = 1;
       }
 
       //--Mem-copy columns, bunching consecutive columns together, one row at a time--//

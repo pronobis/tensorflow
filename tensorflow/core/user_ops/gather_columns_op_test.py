@@ -1,17 +1,86 @@
-
 import unittest
 import tensorflow as tf
 import numpy as np
 
 
-class TestMath(unittest.TestCase):
+class TestMath(tf.test.TestCase):
     gather_columns_module = tf.load_op_library('./gather_columns.so')
     num_cols = 1000
     num_rows = 50000
 
-    def test_gather_columns_errors(self):
-        # TODO
-        pass
+
+    def testEmptyParams(self):
+      with self.test_session():
+        params = tf.constant([], dtype=tf.int32)
+        indices = [1, 2, 3]
+        gather = self.gather_columns_module.gather_columns(params, indices)
+        with self.assertRaisesOpError("Params cannot be empty."):
+            with tf.Session() as sess:
+                sess.run(gather)
+
+    def testEmptyIndices(self):
+      with self.test_session():
+        params = [0, 1, 2]
+        indices = tf.constant([], dtype=tf.int32)
+        gather = self.gather_columns_module.gather_columns(params, indices)
+        with self.assertRaisesOpError("Indices cannot be empty."):
+            with tf.Session() as sess:
+                sess.run(gather)
+
+    def testScalarParams(self):
+      with self.test_session():
+        params = 10
+        indices = [1, 2, 3]
+        gather = self.gather_columns_module.gather_columns(params, indices)
+        with self.assertRaisesOpError("Params must be at least a vector."):
+            with tf.Session() as sess:
+                sess.run(gather)
+
+    def testScalarIndices(self):
+      with self.test_session():
+        params = [1, 2, 3]
+        indices = 1
+        gather = self.gather_columns_module.gather_columns(params, indices)
+        with self.assertRaisesOpError("Indices must be a vector, but it is a: 0D Tensor."):
+            with tf.Session() as sess:
+                sess.run(gather)
+
+    def test3DParams(self):
+      with self.test_session():
+        params = [[[0, 1, 2]]]
+        indices = [1, 2, 3]
+        gather = self.gather_columns_module.gather_columns(params, indices)
+        with self.assertRaisesOpError("Params must be 1D or 2D but it is: 3D."):
+            with tf.Session() as sess:
+                sess.run(gather)
+
+    def test2DIndices(self):
+      with self.test_session():
+        params = [[0, 1, 2]]
+        indices = [[1, 2, 3]]
+        gather = self.gather_columns_module.gather_columns(params, indices)
+        with self.assertRaisesOpError("Indices must be a vector, but it is a: 2D Tensor."):
+            with tf.Session() as sess:
+                sess.run(gather)
+
+    def testNegativeIndices(self):
+      with self.test_session():
+        params = [0, 1, 2]
+        indices = [-1]
+        gather = self.gather_columns_module.gather_columns(params, indices)
+        with self.assertRaisesOpError("Indices\(0\): -1 is not in range \(0, 3\]."):
+            with tf.Session() as sess:
+                sess.run(gather)
+
+    def testBadIndices(self):
+      with self.test_session():
+        params = tf.constant([[1, 2, 3, 4, 5]], dtype=tf.float64)
+        indices = tf.constant([2, 1, 10, 1, 2], dtype=tf.int32)
+        gather = self.gather_columns_module.gather_columns(params, indices)
+        with self.assertRaisesOpError("Indices\(2\): 10 is not in range \(0, 5\]."):
+            with tf.Session() as sess:
+                sess.run(gather)
+
 
     def test_gather_columns(self):
         def test(params, indices, dtype, true_output, large_case=False):
@@ -198,7 +267,7 @@ class TestMath(unittest.TestCase):
              list(range(self.num_cols-1, -1, -1)), # [n-1, n-2, n-3, ..., 1, 0]
              tf.int64,
              list(range(self.num_cols, 0, -1)), # [n, n-1, n-2, ..., 2, 1]
-             True)
+             False)
 
 if __name__ == '__main__':
     unittest.main()

@@ -31,16 +31,18 @@ public:
     //--Grab the input tensor - indices--//
     const Tensor& indices = ctx->input(1);
 
+    OP_REQUIRES(ctx, params.TotalBytes() > 0,
+                errors::InvalidArgument("Params cannot be empty."));
     OP_REQUIRES(ctx, TensorShapeUtils::IsVectorOrHigher(params.shape()),
-                errors::InvalidArgument("params must be at least a vector"));
+                errors::InvalidArgument("Params must be at least a vector."));
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(indices.shape()),
-                errors::InvalidArgument("indices must be a vector, but it is a: ", indices.dims(), "D Tensor."));
+                errors::InvalidArgument("Indices must be a vector, but it is a: ", indices.dims(), "D Tensor."));
 
     const TensorShape& params_shape(params.shape());
 
     OP_REQUIRES(
           ctx, params_shape.dims() <= 2,
-          errors::InvalidArgument("params must be 1D or 2D but it is: ", params_shape.dims(), "D"));
+          errors::InvalidArgument("Params must be 1D or 2D but it is: ", params_shape.dims(), "D."));
 
     TensorShape output_shape(params_shape);
 
@@ -49,7 +51,7 @@ public:
     const int64 indices_size = indices.dim_size(0);
 
     OP_REQUIRES(ctx, indices_size > 0,
-                errors::InvalidArgument("indices cannot be empty."));
+                errors::InvalidArgument("Indices cannot be empty."));
 
     if(params_shape.dims() == 1)
     {
@@ -86,7 +88,7 @@ public:
                           output_tensor);
 
     OP_REQUIRES(ctx, bad_i < 0,
-                errors::InvalidArgument("indices(", bad_i, "): ", indices_flat(bad_i),
+                errors::InvalidArgument("Indices(", bad_i, "): ", indices_flat(bad_i),
                                         " is not in range (0, ", params_cols, "]."));
   }
 };
