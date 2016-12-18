@@ -173,27 +173,23 @@ public:
 };
 
 
-#define REGISTER_SCATTERCOLUMNS_INT32(type) \
+#define REGISTER_SCATTERCOLUMNS_ALL(dev, type, index_type) \
   REGISTER_KERNEL_BUILDER(Name("ScatterColumns") \
-  .Device(DEVICE_CPU) \
+  .Device(DEVICE_##dev) \
   .TypeConstraint<type>("T") \
-  .TypeConstraint<int32>("IndT"), \
-  ScatterColumnsOp<CPUDevice, type, int32>)
+  .TypeConstraint<index_type>("IndT"), \
+  ScatterColumnsOp<dev##Device, type, index_type>)
 
-TF_CALL_ALL_TYPES(REGISTER_SCATTERCOLUMNS_INT32);
+#define REGISTER_SCATTERCOLUMNS_ALL_INDICES(dev, type) \
+  REGISTER_SCATTERCOLUMNS_ALL(dev, type, int32);      \
+  REGISTER_SCATTERCOLUMNS_ALL(dev, type, int64)
 
-#undef REGISTER_SCATTERCOLUMNS_INT32
+#define REGISTER_SCATTERCOLUMNS_CPU(type) REGISTER_SCATTERCOLUMNS_ALL_INDICES(CPU, type)
 
+//--Registration of CPU implementations--//
+TF_CALL_ALL_TYPES(REGISTER_SCATTERCOLUMNS_CPU);
+TF_CALL_QUANTIZED_TYPES(REGISTER_SCATTERCOLUMNS_CPU);
 
-#define REGISTER_SCATTERCOLUMNS_INT64(type) \
-  REGISTER_KERNEL_BUILDER(Name("ScatterColumns") \
-  .Device(DEVICE_CPU) \
-  .TypeConstraint<type>("T") \
-  .TypeConstraint<int64>("IndT"), \
-  ScatterColumnsOp<CPUDevice, type, int64>)
-
-TF_CALL_ALL_TYPES(REGISTER_SCATTERCOLUMNS_INT64);
-
-#undef REGISTER_SCATTERCOLUMNS_INT64
-
-
+#undef REGISTER_SCATTERCOLUMNS_CPU
+#undef REGISTER_SCATTERCOLUMNS_ALL_INDICES
+#undef REGISTER_SCATTERCOLUMNS_ALL
