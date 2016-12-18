@@ -2,6 +2,8 @@ import unittest
 import tensorflow as tf
 import numpy as np
 
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import common_shapes
 
 class TestMath(tf.test.TestCase):
     gather_columns_module = tf.load_op_library('./gather_columns.so')
@@ -83,6 +85,8 @@ class TestMath(tf.test.TestCase):
 
 
     def test_gather_columns(self):
+        ops.RegisterShape("GatherColumns")(common_shapes.call_cpp_shape_fn)
+
         def test(params, indices, dtype, true_output, large_case=False):
 
             with self.subTest(params=params, indices=indices, dtype=dtype, large_case=False):
@@ -124,26 +128,31 @@ class TestMath(tf.test.TestCase):
 
                 np.testing.assert_array_almost_equal(out1d, true_output)
                 self.assertEqual(dtype.as_numpy_dtype, out1d.dtype)
+                np.testing.assert_array_equal(op1d.get_shape(), np.array([len(indices)]))
 
                 true_output_2d1 = [np.array(true_output)]
                 np.testing.assert_array_almost_equal(out2d1, true_output_2d1)
                 self.assertEqual(dtype.as_numpy_dtype, out2d1.dtype)
+                np.testing.assert_array_equal(op2d1.get_shape(), np.array([1, len(indices)]))
 
                 if not large_case:
                     true_output_2d2 = [np.array(true_output) * row1,
                                        np.array(true_output) * row2,
                                        np.array(true_output) * row3]
+                    true_shape = np.array([3, len(indices)])
                 else:
                     true_output_row = np.array(true_output)
                     for i in range(0, self.num_rows):
                         params_matrix[i,:] = true_output_row * (i+1)
                     true_output_2d2 = params_matrix
+                    true_shape = np.array([self.num_rows, len(indices)])
 
                     # For testing only the overhead time
                     #true_output_2d2 = true_output
 
                 np.testing.assert_array_almost_equal(out2d2, true_output_2d2)
                 self.assertEqual(dtype.as_numpy_dtype, out2d2.dtype)
+                np.testing.assert_array_equal(op2d2.get_shape(), true_shape)
 
 
         float_val = 1.23456789

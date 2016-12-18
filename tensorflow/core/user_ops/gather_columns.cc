@@ -1,18 +1,36 @@
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/user_ops/gather_columns_functor.h"
 
 using namespace tensorflow;
 using namespace std;
 
-//--TODO: shape inference--//
+using shape_inference::InferenceContext;
+using shape_inference::ShapeHandle;
+
 REGISTER_OP("GatherColumns")
 .Input("params: T")
 .Input("indices: IndT")
 .Output("columns: T")
 .Attr("T: type")
-.Attr("IndT: {int32,int64}");
+.Attr("IndT: {int32,int64}")
+.SetShapeFn([](InferenceContext* ctx) {
+  ShapeHandle params_shape;
+  TF_RETURN_IF_ERROR(ctx->WithRankAtLeast(ctx->input(0), 1, &params_shape));
+  TF_RETURN_IF_ERROR(ctx->WithRankAtMost(ctx->input(0), 2, &params_shape));
+
+  ShapeHandle indices_shape = ctx->input(1);
+  TF_RETURN_IF_ERROR(ctx->WithRank(ctx->input(1), 1, &indices_shape));
+
+  ShapeHandle out_shape;
+  TF_RETURN_IF_ERROR(ctx->ReplaceDim(params_shape, -1, ctx->Dim(indices_shape, 0), &out_shape));
+  ctx->set_output(0, out_shape);
+
+  return Status::OK();
+});
+
 
 template <typename Device, typename T, typename IndT>
 class GatherColumnsOp : public OpKernel {
