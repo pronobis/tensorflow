@@ -2,8 +2,8 @@
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/platform/prefetch.h"
-#include "../kernels/bounds_check.h" //--TODO: Currently <#include "tensorflow/core/kernels/bounds_check.h"> gives an error. Need to check and fix.
-#include "scatter_columns_functor.h"
+#include "tensorflow/core/kernels/bounds_check.h"
+#include "tensorflow/core/user_ops/scatter_columns_functor.h"
 
 using namespace tensorflow;
 
