@@ -33,9 +33,12 @@ class TestMath(unittest.TestCase):
                                              np.array(params) * row2,
                                              np.array(params) * row3]), dtype=dtype)
 
-                op1d = self.scatter_columns_module.scatter_columns(p1d, indices, num_cols, pad_elem)
-                op2d1 = self.scatter_columns_module.scatter_columns(p2d1, indices, num_cols, pad_elem)
-                op2d2 = self.scatter_columns_module.scatter_columns(p2d2, indices, num_cols, pad_elem)
+                ind_32 = tf.constant(indices, dtype=tf.int32)
+                ind_64 = tf.constant(indices, dtype=tf.int64)
+
+                op1d = self.scatter_columns_module.scatter_columns(p1d, ind_64, num_cols, pad_elem)
+                op2d1 = self.scatter_columns_module.scatter_columns(p2d1, ind_32, num_cols, pad_elem)
+                op2d2 = self.scatter_columns_module.scatter_columns(p2d2, ind_64, num_cols, pad_elem)
 
                 with tf.Session() as sess:
                     out1d = sess.run(op1d)
