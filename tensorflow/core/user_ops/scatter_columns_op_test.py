@@ -7,6 +7,8 @@ from tensorflow.python.framework import common_shapes
 
 class TestMath(tf.test.TestCase):
     scatter_columns_module = tf.load_op_library('./scatter_columns.so')
+    num_cols = 1000
+    num_rows = 30000
 
     def testEmptyIndices(self):
       with self.test_session():
@@ -143,11 +145,11 @@ class TestMath(tf.test.TestCase):
     def test_scatter_cols(self):
         ops.RegisterShape("ScatterColumns")(common_shapes.call_cpp_shape_fn)
 
-        def test(params, indices, num_cols, pad_elem, dtype, true_output):
+        def test(params, indices, num_cols, pad_elem, dtype, true_output, large_case=False):
 
             with self.subTest(params=params, indices=indices,
                               num_cols=num_cols, pad_elem=pad_elem,
-                              dtype=dtype):
+                              dtype=dtype, large_case=large_case):
                 if dtype == bool:
                     row1 = row2 = row3 = 1
                 else:
@@ -157,9 +159,20 @@ class TestMath(tf.test.TestCase):
 
                 p1d = tf.constant(params, dtype=dtype)
                 p2d1 = tf.constant(np.array([np.array(params)]), dtype=dtype)
-                p2d2 = tf.constant(np.array([np.array(params) * row1,
-                                             np.array(params) * row2,
-                                             np.array(params) * row3]), dtype=dtype)
+
+                if not large_case:
+                    p2d2 = tf.constant(np.array([np.array(params) * row1,
+                                                 np.array(params) * row2,
+                                                 np.array(params) * row3]), dtype=dtype)
+                else:
+                    params_matrix = np.empty([self.num_rows, self.num_cols])
+                    params_row = np.array(params)
+                    for i in range(0, self.num_rows):
+                        params_matrix[i,:] = params_row * (i+1)
+                    p2d2 = tf.constant(params_matrix, dtype=dtype)
+
+                    # For testing only the overhead time
+                    #p2d2 = tf.constant(params, dtype=dtype)
 
                 ind_32 = tf.constant(indices, dtype=tf.int32)
                 ind_64 = tf.constant(indices, dtype=tf.int64)
@@ -180,18 +193,31 @@ class TestMath(tf.test.TestCase):
                 np.testing.assert_array_almost_equal(out2d1, true_output_2d1)
                 self.assertEqual(dtype.as_numpy_dtype, out2d1.dtype)
 
-                r_1 = np.array(true_output)
-                r_2 = np.array(true_output)
-                r_3 = np.array(true_output)
-                ind = np.array(indices)
+                if not large_case:
+                    r_1 = np.array(true_output)
+                    r_2 = np.array(true_output)
+                    r_3 = np.array(true_output)
+                    ind = np.array(indices)
 
-                r_1[ind] = r_1[ind] * row1
-                r_2[ind] = r_2[ind] * row2
-                r_3[ind] = r_3[ind] * row3
+                    r_1[ind] = r_1[ind] * row1
+                    r_2[ind] = r_2[ind] * row2
+                    r_3[ind] = r_3[ind] * row3
 
-                true_output_2d2 = [r_1,
-                                   r_2,
-                                   r_3]
+                    true_output_2d2 = [r_1,
+                                       r_2,
+                                       r_3]
+                else:
+                    params_matrix = np.empty([self.num_rows, self.num_cols*2])
+                    true_output_row = np.array(true_output)
+                    ind = np.array(indices)
+                    for i in range(0, self.num_rows):
+                        params_matrix[i,:] = true_output_row
+                        params_matrix[i,ind] = true_output_row[ind] * (i+1)
+                    true_output_2d2 = params_matrix
+
+                    # For testing only the overhead time
+                    #true_output_2d2 = true_output
+
                 np.testing.assert_array_almost_equal(out2d2, true_output_2d2)
                 self.assertEqual(dtype.as_numpy_dtype, out2d2.dtype)
 
@@ -325,6 +351,16 @@ class TestMath(tf.test.TestCase):
              tf.bool,
              [False, False, False, False, False, True, False, False, False, True, False, False, False, False, False])
 
+        # Large case for performance test
+        true_output = list(np.arange(self.num_cols, 0, -0.5))
+        true_output[1:self.num_cols*2:2] = list(np.full((self.num_cols), pad_elem, np.int64))
+        test(list(range(1, self.num_cols+1)), # [1, 2, 3, ..., n-1, n]
+             list(range((self.num_cols*2)-2, -1, -2)), # [2n-2, n-4, n-6, ..., 2, 0]
+             self.num_cols*2,
+             pad_elem,
+             tf.int64,
+             true_output, # [n, pad_elem, n-1, pad_elem, n-2, ..., 2, pad_elem, 1, pad_elem]
+             True)
 
 
 if __name__ == '__main__':
