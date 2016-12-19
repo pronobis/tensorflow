@@ -1,8 +1,9 @@
-
 import unittest
 import tensorflow as tf
 import numpy as np
 
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import common_shapes
 
 class TestMath(unittest.TestCase):
     def test_scatter_cols_errors(self):
@@ -12,6 +13,8 @@ class TestMath(unittest.TestCase):
     scatter_columns_module = tf.load_op_library('./scatter_columns.so')
 
     def test_scatter_cols(self):
+        ops.RegisterShape("ScatterColumns")(common_shapes.call_cpp_shape_fn)
+
         def test(params, indices, num_cols, pad_elem, dtype, true_output):
 
             with self.subTest(params=params, indices=indices,
@@ -41,7 +44,6 @@ class TestMath(unittest.TestCase):
 
                 np.testing.assert_array_almost_equal(out1d, true_output)
                 self.assertEqual(dtype.as_numpy_dtype, out1d.dtype)
-
 
                 true_output_2d1 = [np.array(true_output)]
                 np.testing.assert_array_almost_equal(out2d1, true_output_2d1)

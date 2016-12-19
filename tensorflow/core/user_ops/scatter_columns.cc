@@ -1,11 +1,16 @@
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/platform/prefetch.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/user_ops/scatter_columns_functor.h"
 
 using namespace tensorflow;
+
+using shape_inference::InferenceContext;
+using shape_inference::ShapeHandle;
+using shape_inference::DimensionHandle;
 
 REGISTER_OP("ScatterColumns")
 .Input("params: T")
@@ -14,7 +19,26 @@ REGISTER_OP("ScatterColumns")
 .Input("pad_elem: T")
 .Output("columns: T")
 .Attr("T: type")
-.Attr("IndT: {int32,int64}");
+.Attr("IndT: {int32,int64}")
+.SetShapeFn([](InferenceContext* ctx) {
+  ShapeHandle params_shape;
+  TF_RETURN_IF_ERROR(ctx->WithRankAtLeast(ctx->input(0), 1, &params_shape));
+  TF_RETURN_IF_ERROR(ctx->WithRankAtMost(ctx->input(0), 2, &params_shape));
+
+  ShapeHandle unused_shape;
+  TF_RETURN_IF_ERROR(ctx->WithRank(ctx->input(1), 1, &unused_shape)); //--indices--//
+  TF_RETURN_IF_ERROR(ctx->WithRank(ctx->input(2), 0, &unused_shape)); //--out_num_cols--//
+  TF_RETURN_IF_ERROR(ctx->WithRank(ctx->input(3), 0, &unused_shape)); //--pad_elem--//
+
+  DimensionHandle out_last_dim;
+  TF_RETURN_IF_ERROR(ctx->MakeDimForScalarInput(2, &out_last_dim));
+
+  ShapeHandle out_shape;
+  TF_RETURN_IF_ERROR(ctx->ReplaceDim(params_shape, -1, out_last_dim, &out_shape));
+  ctx->set_output(0, out_shape);
+
+  return Status::OK();
+});
 
 template <typename Device, typename T, typename IndT>
 class ScatterColumnsOp : public OpKernel {
