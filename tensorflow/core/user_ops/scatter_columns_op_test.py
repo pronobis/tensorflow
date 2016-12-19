@@ -5,12 +5,140 @@ import numpy as np
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import common_shapes
 
-class TestMath(unittest.TestCase):
-    def test_scatter_cols_errors(self):
-        # TODO
-        pass
-
+class TestMath(tf.test.TestCase):
     scatter_columns_module = tf.load_op_library('./scatter_columns.so')
+
+    def testEmptyIndices(self):
+      with self.test_session():
+        params = [0, 1, 2]
+        indices = tf.constant([], dtype=tf.int32)
+        num_cols = 10
+        pad_elem = 0
+        scatter = self.scatter_columns_module.scatter_columns(params, indices, num_cols, pad_elem)
+        with self.assertRaisesOpError("Indices cannot be empty."):
+            with tf.Session() as sess:
+                sess.run(scatter)
+
+    def testScalarParams(self):
+      with self.test_session():
+        params = 10
+        indices = [1, 2, 3]
+        num_cols = 10
+        pad_elem = 0
+        scatter = self.scatter_columns_module.scatter_columns(params, indices, num_cols, pad_elem)
+        with self.assertRaisesOpError("Params must be at least a vector."):
+            with tf.Session() as sess:
+                sess.run(scatter)
+
+    def testScalarIndices(self):
+      with self.test_session():
+        params = [1, 2, 3]
+        indices = 1
+        num_cols = 10
+        pad_elem = 0
+        scatter = self.scatter_columns_module.scatter_columns(params, indices, num_cols, pad_elem)
+        with self.assertRaisesOpError("Indices must be a vector, but it is a: 0D Tensor."):
+            with tf.Session() as sess:
+                sess.run(scatter)
+
+    def test3DParams(self):
+      with self.test_session():
+        params = [[[0, 1, 2]]]
+        indices = [1, 2, 3]
+        num_cols = 10
+        pad_elem = 0
+        scatter = self.scatter_columns_module.scatter_columns(params, indices, num_cols, pad_elem)
+        with self.assertRaisesOpError("Params must be 1D or 2D but it is: 3D."):
+            with tf.Session() as sess:
+                sess.run(scatter)
+
+    def test2DIndices(self):
+      with self.test_session():
+        params = [[0, 1, 2]]
+        indices = [[1, 2, 3]]
+        num_cols = 10
+        pad_elem = 0
+        scatter = self.scatter_columns_module.scatter_columns(params, indices, num_cols, pad_elem)
+        with self.assertRaisesOpError("Indices must be a vector, but it is a: 2D Tensor."):
+            with tf.Session() as sess:
+                sess.run(scatter)
+
+    def testVectorOutNumCols(self):
+      with self.test_session():
+        params = [[0, 1, 2]]
+        indices = [1, 2, 3]
+        num_cols = [4]
+        pad_elem = 0
+        scatter = self.scatter_columns_module.scatter_columns(params, indices, num_cols, pad_elem)
+        with self.assertRaisesOpError("out_num_cols must be a scalar, but it is a: 1D Tensor"):
+            with tf.Session() as sess:
+                sess.run(scatter)
+
+    def test2DPadElem(self):
+      with self.test_session():
+        params = [[0, 1, 2]]
+        indices = [1, 2, 3]
+        num_cols = 5
+        pad_elem = [[0]]
+        scatter = self.scatter_columns_module.scatter_columns(params, indices, num_cols, pad_elem)
+        with self.assertRaisesOpError("pad_elem must be a scalar, but it is a: 2D Tensor"):
+            with tf.Session() as sess:
+                sess.run(scatter)
+
+    def testNegativeIndices(self):
+      with self.test_session():
+        params = [0, 1, 2]
+        indices = [2, -1, 0]
+        num_cols = 6
+        pad_elem = 0
+        scatter = self.scatter_columns_module.scatter_columns(params, indices, num_cols, pad_elem)
+        with self.assertRaisesOpError("Indices\(1\): -1 is not in range \(0, 6\]."):
+            with tf.Session() as sess:
+                sess.run(scatter)
+
+    def testBadIndices(self):
+      with self.test_session():
+        params = tf.constant([[1, 2, 3, 4, 5]], dtype=tf.float64)
+        indices = tf.constant([2, 1, 10, 6, 5], dtype=tf.int32)
+        num_cols = 7
+        pad_elem = 0
+        scatter = self.scatter_columns_module.scatter_columns(params, indices, num_cols, pad_elem)
+        with self.assertRaisesOpError("Indices\(2\): 10 is not in range \(0, 7\]."):
+            with tf.Session() as sess:
+                sess.run(scatter)
+
+    def testDuplicateIndices(self):
+      with self.test_session():
+        params = tf.constant([1, 2, 3, 4, 5], dtype=tf.float64)
+        indices = tf.constant([0, 1, 2, 2, 4], dtype=tf.int32)
+        num_cols = 5
+        pad_elem = 0
+        scatter = self.scatter_columns_module.scatter_columns(params, indices, num_cols, pad_elem)
+        with self.assertRaisesOpError("Indices cannot contain duplicates. Total no. of indices: 5 != no. of unique indices: 4"):
+            with tf.Session() as sess:
+                sess.run(scatter)
+
+    def testWrongOutNumCols(self):
+      with self.test_session():
+        params = tf.constant([1, 2, 3, 4, 5], dtype=tf.float64)
+        indices = tf.constant([4, 3, 2, 1, 0], dtype=tf.int32)
+        num_cols = 4
+        pad_elem = 0
+        scatter = self.scatter_columns_module.scatter_columns(params, indices, num_cols, pad_elem)
+        with self.assertRaisesOpError("out_num_cols: 4 must be >= size of the indexed dimension of params: 5"):
+            with tf.Session() as sess:
+                sess.run(scatter)
+
+    def testIncorrectIndicesSize(self):
+      with self.test_session():
+        params = tf.constant([1, 2, 3, 4, 5], dtype=tf.float64)
+        indices = tf.constant([11, 10, 9, 8], dtype=tf.int32)
+        num_cols = 12
+        pad_elem = 0
+        scatter = self.scatter_columns_module.scatter_columns(params, indices, num_cols, pad_elem)
+        with self.assertRaisesOpError("Size of indices: 4 and the indexed dimension of params - 5 - must be the same."):
+            with tf.Session() as sess:
+                sess.run(scatter)
 
     def test_scatter_cols(self):
         ops.RegisterShape("ScatterColumns")(common_shapes.call_cpp_shape_fn)

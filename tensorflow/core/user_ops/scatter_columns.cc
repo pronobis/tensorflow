@@ -64,27 +64,32 @@ public:
     //--Grab the input - pad_elem--//
     const Tensor& pad_elem_tensor = ctx->input(3);
 
+
+    OP_REQUIRES(ctx, TensorShapeUtils::IsVectorOrHigher(params.shape()),
+                errors::InvalidArgument("Params must be at least a vector."));
+
+    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(indices.shape()),
+                errors::InvalidArgument("Indices must be a vector, but it is a: ", indices.dims(), "D Tensor."));
+
     //--Check and convert out_num_cols into scalar--//
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(out_num_cols_tensor.shape()),
+                errors::InvalidArgument("out_num_cols must be a scalar, but it is a: ", out_num_cols_tensor.dims(), "D Tensor."));
     IndT out_num_cols = out_num_cols_tensor.scalar<IndT>()();
 
     //--Check and convert pad_elem into scalar--//
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(pad_elem_tensor.shape()),
+                errors::InvalidArgument("pad_elem must be a scalar, but it is a: ", pad_elem_tensor.dims(), "D Tensor."));
     T pad_elem = pad_elem_tensor.scalar<T>()();
-
-    OP_REQUIRES(ctx, TensorShapeUtils::IsVectorOrHigher(params.shape()),
-                errors::InvalidArgument("params must be at least a vector"));
-
-    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(indices.shape()),
-                errors::InvalidArgument("indices must be a vector, but it is a: ", indices.dims(), "D Tensor."));
 
     int64 indices_size = indices.dim_size(0);
 
     OP_REQUIRES(ctx, indices_size > 0,
-                errors::InvalidArgument("indices cannot be empty."));
+                errors::InvalidArgument("Indices cannot be empty."));
 
     const TensorShape& params_shape(params.shape());
 
     OP_REQUIRES(ctx, params_shape.dims() <= 2,
-                errors::InvalidArgument("params must be 1D or 2D but it is: ", params_shape.dims(), "D"));
+                errors::InvalidArgument("Params must be 1D or 2D but it is: ", params_shape.dims(), "D."));
 
 
     TensorShape output_shape(params_shape);
@@ -121,7 +126,7 @@ public:
     unordered_set<IndT> unique_ind(&indices_flat(0), &indices_flat(indices_size));
 
     OP_REQUIRES(ctx, unique_ind.size() == indices_size,
-                errors::InvalidArgument("indices cannot contain duplicates.",
+                errors::InvalidArgument("Indices cannot contain duplicates.",
                                         " Total no. of indices: ", indices_size,
                                         " != no. of unique indices: ", unique_ind.size()));
 
@@ -131,7 +136,7 @@ public:
     {
       //--Check indices[i] ∈ (0, out_num_cols]--//
       OP_REQUIRES(ctx, FastBoundsCheck(indices_flat(i), out_num_cols),
-                  errors::InvalidArgument("indices(", i, "): ", indices_flat(i), " is not in range (0, ", out_num_cols, "]."));
+                  errors::InvalidArgument("Indices(", i, "): ", indices_flat(i), " is not in range (0, ", out_num_cols, "]."));
 
       out_indices[indices_flat(i)] = i;
     }
