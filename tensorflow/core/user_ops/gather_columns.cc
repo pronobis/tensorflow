@@ -106,8 +106,7 @@ public:
                           output_tensor);
 
     OP_REQUIRES(ctx, bad_i < 0,
-                errors::InvalidArgument("Indices(", bad_i, "): ", indices_flat(bad_i),
-                                        " is not in range (0, ", params_cols, "]."));
+                errors::InvalidArgument("Indices(", bad_i, ") is not in range (0, ", params_cols, "]."));
   }
 };
 
@@ -129,5 +128,17 @@ TF_CALL_ALL_TYPES(REGISTER_GATHERCOLUMNS_CPU);
 TF_CALL_QUANTIZED_TYPES(REGISTER_GATHERCOLUMNS_CPU);
 
 #undef REGISTER_GATHERCOLUMNS_CPU
+
+#if GOOGLE_CUDA
+
+//--Registration of the GPU implementations--//
+#define REGISTER_GATHERCOLUMNS_GPU(type) REGISTER_GATHERCOLUMNS_ALL_INDICES(GPU, type)
+
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GATHERCOLUMNS_GPU);
+
+#undef REGISTER_GATHERCOLUMNS_GPU
+
+#endif  // GOOGLE_CUDA
+
 #undef REGISTER_GATHERCOLUMNS_ALL_INDICES
 #undef REGISTER_GATHERCOLUMNS_ALL

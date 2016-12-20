@@ -12,7 +12,7 @@ class TestMath(tf.test.TestCase):
 
 
     def testEmptyParams(self):
-      with self.test_session():
+      with self.subTest():
         params = tf.constant([], dtype=tf.int32)
         indices = [1, 2, 3]
         gather = self.gather_columns_module.gather_columns(params, indices)
@@ -21,7 +21,7 @@ class TestMath(tf.test.TestCase):
                 sess.run(gather)
 
     def testEmptyIndices(self):
-      with self.test_session():
+      with self.subTest():
         params = [0, 1, 2]
         indices = tf.constant([], dtype=tf.int32)
         gather = self.gather_columns_module.gather_columns(params, indices)
@@ -30,7 +30,7 @@ class TestMath(tf.test.TestCase):
                 sess.run(gather)
 
     def testScalarParams(self):
-      with self.test_session():
+      with self.test_session(use_gpu=False):
         params = 10
         indices = [1, 2, 3]
         gather = self.gather_columns_module.gather_columns(params, indices)
@@ -39,7 +39,7 @@ class TestMath(tf.test.TestCase):
                 sess.run(gather)
 
     def testScalarIndices(self):
-      with self.test_session():
+      with self.test_session(use_gpu=False):
         params = [1, 2, 3]
         indices = 1
         gather = self.gather_columns_module.gather_columns(params, indices)
@@ -48,7 +48,7 @@ class TestMath(tf.test.TestCase):
                 sess.run(gather)
 
     def test3DParams(self):
-      with self.test_session():
+      with self.subTest():
         params = [[[0, 1, 2]]]
         indices = [1, 2, 3]
         gather = self.gather_columns_module.gather_columns(params, indices)
@@ -57,7 +57,7 @@ class TestMath(tf.test.TestCase):
                 sess.run(gather)
 
     def test2DIndices(self):
-      with self.test_session():
+      with self.subTest():
         params = [[0, 1, 2]]
         indices = [[1, 2, 3]]
         gather = self.gather_columns_module.gather_columns(params, indices)
@@ -66,20 +66,20 @@ class TestMath(tf.test.TestCase):
                 sess.run(gather)
 
     def testNegativeIndices(self):
-      with self.test_session():
-        params = [0, 1, 2]
+      with self.test_session(use_gpu=False):
+        params = tf.constant([1, 2, 3], dtype=tf.float32)
         indices = [-1]
         gather = self.gather_columns_module.gather_columns(params, indices)
-        with self.assertRaisesOpError("Indices\(0\): -1 is not in range \(0, 3\]."):
+        with self.assertRaisesOpError("Indices\(0\) is not in range \(0, 3\]."):
             with tf.Session() as sess:
                 sess.run(gather)
 
     def testBadIndices(self):
-      with self.test_session():
+      with self.test_session(use_gpu=True):
         params = tf.constant([[1, 2, 3, 4, 5]], dtype=tf.float64)
         indices = tf.constant([2, 1, 10, 1, 2], dtype=tf.int32)
         gather = self.gather_columns_module.gather_columns(params, indices)
-        with self.assertRaisesOpError("Indices\(2\): 10 is not in range \(0, 5\]."):
+        with self.assertRaisesOpError("Indices\(2\) is not in range \(0, 5\]."):
             with tf.Session() as sess:
                 sess.run(gather)
 
@@ -222,25 +222,25 @@ class TestMath(tf.test.TestCase):
              tf.float32,
              [float_val*2, float_val*4, float_val*3])
         test([float_val, float_val*2, float_val*3, float_val*4],
-             [1, 3, 2],
+             [1, 3, 2, 0, 2, 3, 1],
              tf.float64,
-             [float_val*2, float_val*4, float_val*3])
+             [float_val*2, float_val*4, float_val*3, float_val*1, float_val*3, float_val*4, float_val*2])
 
         # int
         test([int_val, int_val*2, int_val*3, int_val*4],
-             [3, 2, 1, 0],
+             [3, 2, 1],
              tf.int32,
-             [int_val*4, int_val*3, int_val*2, int_val])
+             [int_val*4, int_val*3, int_val*2])
         test([int_val, int_val*2, int_val*3, int_val*4],
-             [2, 1],
+             [3, 2, 1, 0, 1, 2, 3],
              tf.int64,
-             [int_val*3, int_val*2])
+             [int_val*4, int_val*3, int_val*2, int_val*1, int_val*2, int_val*3, int_val*4])
 
         # bool
         test([True, True, False, True, False],
-             [2, 1, 4, 0, 3],
+             [0, 1, 2, 3, 4],
              tf.bool,
-             [False, True, False, True, True])
+             [True, True, False, True, False])
         test([False, False, True, True, False, True],
              [5, 4, 3, 2, 1, 0],
              tf.bool,
@@ -274,9 +274,9 @@ class TestMath(tf.test.TestCase):
         # Large case for performance test
         test(list(range(1, self.num_cols+1)), # [1, 2, 3, ..., n-1, n]
              list(range(self.num_cols-1, -1, -1)), # [n-1, n-2, n-3, ..., 1, 0]
-             tf.int64,
+             tf.float64,
              list(range(self.num_cols, 0, -1)), # [n, n-1, n-2, ..., 2, 1]
-             False)
+             True)
 
 if __name__ == '__main__':
     unittest.main()

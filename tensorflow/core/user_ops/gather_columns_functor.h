@@ -10,6 +10,7 @@ using namespace std;
 
 namespace tensorflow {
   typedef Eigen::ThreadPoolDevice CPUDevice;
+  typedef Eigen::GpuDevice GPUDevice;
 
   namespace functor {
 
