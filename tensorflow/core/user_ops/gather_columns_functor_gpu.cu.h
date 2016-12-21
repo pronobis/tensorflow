@@ -64,7 +64,9 @@ namespace tensorflow {
             <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(params.data(), indices.data(),
                                                                              params_cols, indices_size,
                                                                              output_size, output.data());
-        free(h_indices);
+        if(h_indices)
+          free(h_indices);
+
         return -1;
       }
     };
