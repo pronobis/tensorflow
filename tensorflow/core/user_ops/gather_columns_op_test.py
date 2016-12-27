@@ -89,13 +89,23 @@ class TestMath(tf.test.TestCase):
 
         def test(params, indices, dtype, true_output, large_case=False):
 
-            with self.subTest(params=params, indices=indices, dtype=dtype, large_case=False):
+            with self.subTest(params=params, indices=indices, dtype=dtype, large_case=large_case):
                 if dtype == bool:
                     row1 = row2 = row3 = 1
                 else:
                     row1 = 1
                     row2 = 0
                     row3 = -1
+
+                npdtype = np.bool
+                if dtype == 'tf.float32':
+                    npdtype = np.float32
+                elif dtype == 'tf.float64':
+                    npdtype = np.float64
+                elif dtype == 'tf.int32':
+                    npdtype = np.int32
+                elif dtype == 'tf.int64':
+                    npdtype = np.int64
 
                 p1d = tf.constant(params, dtype=dtype)
                 p2d1 = tf.constant(np.array([np.array(params)]), dtype=dtype)
@@ -105,8 +115,8 @@ class TestMath(tf.test.TestCase):
                                                  np.array(params) * row2,
                                                  np.array(params) * row3]), dtype=dtype)
                 else:
-                    params_matrix = np.empty([self.num_rows, self.num_cols])
-                    params_row = np.array(params)
+                    params_matrix = np.empty([self.num_rows, self.num_cols], dtype=npdtype)
+                    params_row = np.array(params, dtype=npdtype)
                     for i in range(0, self.num_rows):
                         params_matrix[i,:] = params_row * (i+1)
                     p2d2 = tf.constant(params_matrix, dtype=dtype)
@@ -141,7 +151,7 @@ class TestMath(tf.test.TestCase):
                                        np.array(true_output) * row3]
                     true_shape = np.array([3, len(indices)])
                 else:
-                    true_output_row = np.array(true_output)
+                    true_output_row = np.array(true_output, dtype=npdtype)
                     for i in range(0, self.num_rows):
                         params_matrix[i,:] = true_output_row * (i+1)
                     true_output_2d2 = params_matrix

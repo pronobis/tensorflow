@@ -59,11 +59,29 @@ namespace tensorflow {
           }
         }
 
+#if EXEC_TIME_CALC
+        float time_taken;
+        cudaEvent_t start,stop;
+        cudaEventCreate(&start);
+        cudaEventCreate(&stop);
+        cudaEventRecord(start,0);
+#endif // EXEC_TIME_CALC
+
         CudaLaunchConfig config = GetCudaLaunchConfig(output_size, d);
         GatherColumnsOpKernel<T, IndT>
             <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(params.data(), indices.data(),
                                                                              params_cols, indices_size,
                                                                              output_size, output.data());
+
+#if EXEC_TIME_CALC
+        cudaEventRecord(stop,0);
+        cudaEventSynchronize(stop);
+        cudaEventElapsedTime(&time_taken,start,stop);
+        cudaEventDestroy(start);
+        cudaEventDestroy(stop);
+        std::cout << "GPU - Time taken: " << time_taken << " ms" << endl;
+#endif // EXEC_TIME_CALC
+
         if(h_indices)
           free(h_indices);
 
