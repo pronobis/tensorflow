@@ -130,55 +130,6 @@ public:
                                         " Total no. of indices: ", indices_size,
                                         " != no. of unique indices: ", unique_ind.size()));
 
-    //--Arrange output indices--//
-    std::vector<IndT> out_indices(out_num_cols, -1); //--Here '-1' refers to padding column(s)--//
-    for(IndT i=0; i<indices_size; i++)
-    {
-      //--Check indices[i] ∈ (0, out_num_cols]--//
-      OP_REQUIRES(ctx, FastBoundsCheck(indices_flat(i), out_num_cols),
-                  errors::InvalidArgument("Indices(", i, "): ", indices_flat(i), " is not in range (0, ", out_num_cols, "]."));
-
-      out_indices[indices_flat(i)] = i;
-    }
-
-    //--Group consecutive padding columns together--//
-    //--E.g.:  params = [11, 12, 13, 14]
-    //-- out_num_cols = 10
-    //--     pad_elem = 0
-    //--      indices = [7, 4, 2, 3]
-    //--      output  = [0, 0, 13, 14, 12, 0, 0, 11, 0, 0]
-    //--cons_pad_cols = [2, 1, 0, 0, 0, 2, 1, 0, 2, 1]
-
-    std::vector<int> cons_pad_cols(out_num_cols, 0);
-    int pad_cols;
-    int max_cons_pad_cols = 0;
-
-    for(int c = 0; c < out_num_cols; c++)
-    {
-      pad_cols = 0;
-      while(out_indices[c + pad_cols] < 0)
-      {
-        pad_cols++;
-        if(c + pad_cols >= out_num_cols)
-        {
-          break;
-        }
-      }
-
-      if(pad_cols > max_cons_pad_cols)
-      {
-        max_cons_pad_cols = pad_cols;
-      }
-
-      while(pad_cols > 0)
-      {
-        cons_pad_cols[c++] = pad_cols--;
-      }
-    }
-
-    //--Vector containing padding elements. Size of this vector = maximum no. of consecutive padding columns in the output tensor--//
-    gtl::InlinedVector<T, 4> pad_elem_vec(max_cons_pad_cols, pad_elem);
-
     //--Create an output tensor--//
     Tensor* output = NULL;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, output_shape, &output));
@@ -189,15 +140,14 @@ public:
     functor::ScatterColumnsFunctor<Device, T, IndT> functor;
     int64 bad_i = functor(ctx->eigen_device<Device>(),
                           params_tensor,
+                          indices_flat,
                           out_num_cols,
-                          out_indices,
-                          cons_pad_cols,
-                          pad_elem_vec,
+                          pad_elem,
                           params_rows,
                           output_tensor);
 
     OP_REQUIRES(ctx, bad_i < 0,
-                errors::InvalidArgument("bad_i: ", bad_i));
+                errors::InvalidArgument("Indices(", bad_i, ") is not in range (0, ", out_num_cols, "]."));
   }
 };
 

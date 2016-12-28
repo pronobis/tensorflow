@@ -94,7 +94,7 @@ class TestMath(tf.test.TestCase):
         num_cols = 6
         pad_elem = 0
         scatter = self.scatter_columns_module.scatter_columns(params, indices, num_cols, pad_elem)
-        with self.assertRaisesOpError("Indices\(1\): -1 is not in range \(0, 6\]."):
+        with self.assertRaisesOpError("Indices\(1\) is not in range \(0, 6\]."):
             with tf.Session() as sess:
                 sess.run(scatter)
 
@@ -105,7 +105,7 @@ class TestMath(tf.test.TestCase):
         num_cols = 7
         pad_elem = 0
         scatter = self.scatter_columns_module.scatter_columns(params, indices, num_cols, pad_elem)
-        with self.assertRaisesOpError("Indices\(2\): 10 is not in range \(0, 7\]."):
+        with self.assertRaisesOpError("Indices\(2\) is not in range \(0, 7\]."):
             with tf.Session() as sess:
                 sess.run(scatter)
 
