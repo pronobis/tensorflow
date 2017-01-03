@@ -104,11 +104,28 @@ namespace tensorflow {
           return errors::ResourceExhausted("Could not allocate d_out_indices on device.");
         }
 
+#if EXEC_TIME_CALC
+        float time_taken;
+        cudaEvent_t start,stop;
+        cudaEventCreate(&start);
+        cudaEventCreate(&stop);
+        cudaEventRecord(start,0);
+#endif // EXEC_TIME_CALC
+
         CudaLaunchConfig config = GetCudaLaunchConfig(output_size, d);
         ScatterColumnsOpKernel<T, IndT>
             <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(params.data(), d_out_indices,
                                                                              pad_elem, out_num_cols, params_cols,
                                                                              output_size, output.data());
+
+#if EXEC_TIME_CALC
+        cudaEventRecord(stop,0);
+        cudaEventSynchronize(stop);
+        cudaEventElapsedTime(&time_taken,start,stop);
+        cudaEventDestroy(start);
+        cudaEventDestroy(stop);
+        std::cout << "GPU - Time taken: " << time_taken << " ms" << endl;
+#endif // EXEC_TIME_CALC
 
         cudaDeviceSynchronize();
         if(h_indices)

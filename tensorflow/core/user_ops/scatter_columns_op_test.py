@@ -179,6 +179,18 @@ class TestMath(tf.test.TestCase):
                     row2 = 0
                     row3 = -1
 
+                if dtype == tf.bool:
+                    npdtype = np.bool
+                elif dtype == tf.float32:
+                    npdtype = np.float32
+                elif dtype == tf.float64:
+                    npdtype = np.float64
+                elif dtype == tf.int32:
+                    npdtype = np.int32
+                elif dtype == tf.int64:
+                    npdtype = np.int64
+
+
                 p1d = tf.constant(params, dtype=dtype)
                 p2d1 = tf.constant(np.array([np.array(params)]), dtype=dtype)
 
@@ -187,8 +199,8 @@ class TestMath(tf.test.TestCase):
                                                  np.array(params) * row2,
                                                  np.array(params) * row3]), dtype=dtype)
                 else:
-                    params_matrix = np.empty([self.num_rows, self.num_cols])
-                    params_row = np.array(params)
+                    params_matrix = np.empty([self.num_rows, self.num_cols], dtype=npdtype)
+                    params_row = np.array(params, dtype=npdtype)
                     for i in range(0, self.num_rows):
                         params_matrix[i,:] = params_row * (i+1)
                     p2d2 = tf.constant(params_matrix, dtype=dtype)
@@ -233,8 +245,8 @@ class TestMath(tf.test.TestCase):
 
                     true_shape = np.array([3, out_num_cols])
                 else:
-                    params_matrix = np.empty([self.num_rows, self.num_cols*2])
-                    true_output_row = np.array(true_output)
+                    params_matrix = np.empty([self.num_rows, self.num_cols*2], dtype=npdtype)
+                    true_output_row = np.array(true_output, dtype=npdtype)
                     ind = np.array(indices)
                     for i in range(0, self.num_rows):
                         params_matrix[i,:] = true_output_row
@@ -383,7 +395,7 @@ class TestMath(tf.test.TestCase):
         true_output = list(np.arange(self.num_cols, 0, -0.5))
         true_output[1:self.num_cols*2:2] = list(np.full((self.num_cols), pad_elem, np.int64))
         test(list(range(1, self.num_cols+1)), # [1, 2, 3, ..., n-1, n]
-             list(range((self.num_cols*2)-2, -1, -2)), # [2n-2, n-4, n-6, ..., 2, 0]
+             list(range((self.num_cols*2)-2, -1, -2)), # [2n-2, 2n-4, 2n-6, ..., 2n-n, n-2, n-4, ..., 2, 0]
              self.num_cols*2,
              pad_elem,
              tf.float64,

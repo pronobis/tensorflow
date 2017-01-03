@@ -20,12 +20,12 @@ namespace tensorflow {
     //--Helper method to count and copy using memcpy()--//
     template <typename T, typename IndT>
     Status CountAndCopy(const typename TTypes<T>::ConstMatrix& params,
-                      const typename TTypes<IndT>::ConstFlat& indices,
-                      const IndT& out_num_cols,
-                      const T* pad_elem,
-                      const int64& params_rows,
-                      const int64& params_cols,
-                      typename TTypes<T>::Matrix& output) {
+                        const typename TTypes<IndT>::ConstFlat& indices,
+                        const IndT& out_num_cols,
+                        const T* pad_elem,
+                        const int64& params_rows,
+                        const int64& params_cols,
+                        typename TTypes<T>::Matrix& output) {
 
       const int64 indices_size = indices.dimension(0);
 
@@ -33,8 +33,8 @@ namespace tensorflow {
       if(unique_ind.size() != indices_size)
       {
         return errors::InvalidArgument("Indices cannot contain duplicates.",
-                                " Total no. of indices: ", indices_size,
-                                " != no. of unique indices: ", unique_ind.size(), ".");
+                                       " Total no. of indices: ", indices_size,
+                                       " != no. of unique indices: ", unique_ind.size(), ".");
       }
 
       std::vector<IndT> out_indices(out_num_cols, -1); //--Here '-1' refers to padding column(s)--//
@@ -95,6 +95,12 @@ namespace tensorflow {
       //--Vector containing padding elements. Size of this vector = maximum no. of consecutive padding columns in the output tensor--//
       gtl::InlinedVector<T, 4> pad_elem_vec(max_cons_pad_cols, pad_elem[0]);
 
+#if EXEC_TIME_CALC
+      clock_t start, end;
+      float time_taken;
+      start = clock();
+#endif // EXEC_TIME_CALC
+
       //--Mem-copy columns, bunching consecutive padding columns together, one row at a time--//
       for(int row = 0; row < params_rows; row++ )
       {
@@ -129,18 +135,24 @@ namespace tensorflow {
         }
       }
 
+#if EXEC_TIME_CALC
+      end = clock();
+      time_taken = (((float)(end-start))/CLOCKS_PER_SEC) * 1000.0; //--Milliseconds//
+      std::cout << "CPU - Time Taken: " << time_taken << " ms" << endl;
+#endif // EXEC_TIME_CALC
+
       return Status::OK();
     }
 
     template <typename T, typename IndT>
     struct ScatterColumnsFunctorCPU {
       Status operator()(const typename TTypes<T>::ConstMatrix& params,
-                       const typename TTypes<IndT>::ConstFlat& indices,
-                       const IndT& out_num_cols,
-                       const T* pad_elem,
-                       const int64& params_rows,
-                       const int64& params_cols,
-                       typename TTypes<T>::Matrix& output) {
+                        const typename TTypes<IndT>::ConstFlat& indices,
+                        const IndT& out_num_cols,
+                        const T* pad_elem,
+                        const int64& params_rows,
+                        const int64& params_cols,
+                        typename TTypes<T>::Matrix& output) {
         return CountAndCopy<T, IndT>(params, indices, out_num_cols, pad_elem, params_rows, params_cols, output);
       }
     };
@@ -148,25 +160,25 @@ namespace tensorflow {
     template <typename Device, typename T, typename IndT>
     struct ScatterColumnsFunctor {
       Status operator()(const Device& dvc,
-                       const typename TTypes<T>::ConstMatrix& params,
-                       const typename TTypes<IndT>::ConstFlat& indices,
-                       const IndT& out_num_cols,
-                       const T* pad_elem,
-                       const int64& params_rows,
-                       const int64& params_cols,
-                       typename TTypes<T>::Matrix& output);
+                        const typename TTypes<T>::ConstMatrix& params,
+                        const typename TTypes<IndT>::ConstFlat& indices,
+                        const IndT& out_num_cols,
+                        const T* pad_elem,
+                        const int64& params_rows,
+                        const int64& params_cols,
+                        typename TTypes<T>::Matrix& output);
     };
 
     template <typename T, typename IndT>
     struct ScatterColumnsFunctor<CPUDevice, T, IndT> {
       Status operator()(const CPUDevice& dvc,
-                       const typename TTypes<T>::ConstMatrix& params,
-                       const typename TTypes<IndT>::ConstFlat& indices,
-                       const IndT& out_num_cols,
-                       const T* pad_elem,
-                       const int64& params_rows,
-                       const int64& params_cols,
-                       typename TTypes<T>::Matrix& output) {
+                        const typename TTypes<T>::ConstMatrix& params,
+                        const typename TTypes<IndT>::ConstFlat& indices,
+                        const IndT& out_num_cols,
+                        const T* pad_elem,
+                        const int64& params_rows,
+                        const int64& params_cols,
+                        typename TTypes<T>::Matrix& output) {
         return ScatterColumnsFunctorCPU<T, IndT>()(params, indices, out_num_cols, pad_elem, params_rows, params_cols, output);
       }
     };
