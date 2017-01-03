@@ -97,14 +97,15 @@ class TestMath(tf.test.TestCase):
                     row2 = 0
                     row3 = -1
 
-                npdtype = np.bool
-                if dtype == 'tf.float32':
+                if dtype == tf.bool:
+                    npdtype = np.bool
+                elif dtype == tf.float32:
                     npdtype = np.float32
-                elif dtype == 'tf.float64':
+                elif dtype == tf.float64:
                     npdtype = np.float64
-                elif dtype == 'tf.int32':
+                elif dtype == tf.int32:
                     npdtype = np.int32
-                elif dtype == 'tf.int64':
+                elif dtype == tf.int64:
                     npdtype = np.int64
 
                 p1d = tf.constant(params, dtype=dtype)

@@ -5,8 +5,8 @@ import numpy as np
 class TestMath(tf.test.TestCase):
     gather_columns_module = tf.load_op_library('./gather_columns.so')
     num_cols = 1000
-    num_rows = 50000
-    an_odd_number = 99
+    num_rows = 40000
+    an_odd_number = 101
 
     def test_gather_columns(self):
 
@@ -16,14 +16,15 @@ class TestMath(tf.test.TestCase):
                 if self.an_odd_number % 2 == 0:
                     self.an_odd_number = self.an_odd_number+1
 
-                npdtype = np.bool
-                if dtype == 'tf.float32':
+                if dtype == tf.bool:
+                    npdtype = np.bool
+                elif dtype == tf.float32:
                     npdtype = np.float32
-                elif dtype == 'tf.float64':
+                elif dtype == tf.float64:
                     npdtype = np.float64
-                elif dtype == 'tf.int32':
+                elif dtype == tf.int32:
                     npdtype = np.int32
-                elif dtype == 'tf.int64':
+                elif dtype == tf.int64:
                     npdtype = np.int64
 
                 params_matrix = np.empty([self.num_rows, self.num_cols], dtype=npdtype)
