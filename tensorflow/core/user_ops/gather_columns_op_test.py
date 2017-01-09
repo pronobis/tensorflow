@@ -1,0 +1,282 @@
+import unittest
+import tensorflow as tf
+import numpy as np
+
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import common_shapes
+
+class TestMath(tf.test.TestCase):
+    gather_columns_module = tf.load_op_library('./gather_columns.so')
+    num_cols = 1000
+    num_rows = 50000
+
+
+    def testEmptyParams(self):
+      with self.test_session():
+        params = tf.constant([], dtype=tf.int32)
+        indices = [1, 2, 3]
+        gather = self.gather_columns_module.gather_columns(params, indices)
+        with self.assertRaisesOpError("Params cannot be empty."):
+            with tf.Session() as sess:
+                sess.run(gather)
+
+    def testEmptyIndices(self):
+      with self.test_session():
+        params = [0, 1, 2]
+        indices = tf.constant([], dtype=tf.int32)
+        gather = self.gather_columns_module.gather_columns(params, indices)
+        with self.assertRaisesOpError("Indices cannot be empty."):
+            with tf.Session() as sess:
+                sess.run(gather)
+
+    def testScalarParams(self):
+      with self.test_session():
+        params = 10
+        indices = [1, 2, 3]
+        gather = self.gather_columns_module.gather_columns(params, indices)
+        with self.assertRaisesOpError("Params must be at least a vector."):
+            with tf.Session() as sess:
+                sess.run(gather)
+
+    def testScalarIndices(self):
+      with self.test_session():
+        params = [1, 2, 3]
+        indices = 1
+        gather = self.gather_columns_module.gather_columns(params, indices)
+        with self.assertRaisesOpError("Indices must be a vector, but it is a: 0D Tensor."):
+            with tf.Session() as sess:
+                sess.run(gather)
+
+    def test3DParams(self):
+      with self.test_session():
+        params = [[[0, 1, 2]]]
+        indices = [1, 2, 3]
+        gather = self.gather_columns_module.gather_columns(params, indices)
+        with self.assertRaisesOpError("Params must be 1D or 2D but it is: 3D."):
+            with tf.Session() as sess:
+                sess.run(gather)
+
+    def test2DIndices(self):
+      with self.test_session():
+        params = [[0, 1, 2]]
+        indices = [[1, 2, 3]]
+        gather = self.gather_columns_module.gather_columns(params, indices)
+        with self.assertRaisesOpError("Indices must be a vector, but it is a: 2D Tensor."):
+            with tf.Session() as sess:
+                sess.run(gather)
+
+    def testNegativeIndices(self):
+      with self.test_session():
+        params = [0, 1, 2]
+        indices = [-1]
+        gather = self.gather_columns_module.gather_columns(params, indices)
+        with self.assertRaisesOpError("Indices\(0\): -1 is not in range \(0, 3\]."):
+            with tf.Session() as sess:
+                sess.run(gather)
+
+    def testBadIndices(self):
+      with self.test_session():
+        params = tf.constant([[1, 2, 3, 4, 5]], dtype=tf.float64)
+        indices = tf.constant([2, 1, 10, 1, 2], dtype=tf.int32)
+        gather = self.gather_columns_module.gather_columns(params, indices)
+        with self.assertRaisesOpError("Indices\(2\): 10 is not in range \(0, 5\]."):
+            with tf.Session() as sess:
+                sess.run(gather)
+
+
+    def test_gather_columns(self):
+        ops.RegisterShape("GatherColumns")(common_shapes.call_cpp_shape_fn)
+
+        def test(params, indices, dtype, true_output, large_case=False):
+
+            with self.subTest(params=params, indices=indices, dtype=dtype, large_case=False):
+                if dtype == bool:
+                    row1 = row2 = row3 = 1
+                else:
+                    row1 = 1
+                    row2 = 0
+                    row3 = -1
+
+                p1d = tf.constant(params, dtype=dtype)
+                p2d1 = tf.constant(np.array([np.array(params)]), dtype=dtype)
+
+                if not large_case:
+                    p2d2 = tf.constant(np.array([np.array(params) * row1,
+                                                 np.array(params) * row2,
+                                                 np.array(params) * row3]), dtype=dtype)
+                else:
+                    params_matrix = np.empty([self.num_rows, self.num_cols])
+                    params_row = np.array(params)
+                    for i in range(0, self.num_rows):
+                        params_matrix[i,:] = params_row * (i+1)
+                    p2d2 = tf.constant(params_matrix, dtype=dtype)
+
+                    # For testing only the overhead time
+                    #p2d2 = tf.constant(params, dtype=dtype)
+
+                ind_32 = tf.constant(indices, dtype=tf.int32)
+                ind_64 = tf.constant(indices, dtype=tf.int64)
+
+                op1d = self.gather_columns_module.gather_columns(p1d, ind_64)
+                op2d1 = self.gather_columns_module.gather_columns(p2d1, ind_32)
+                op2d2 = self.gather_columns_module.gather_columns(p2d2, ind_64)
+
+                with tf.Session() as sess:
+                    out1d = sess.run(op1d)
+                    out2d1 = sess.run(op2d1)
+                    out2d2 = sess.run(op2d2)
+
+                np.testing.assert_array_almost_equal(out1d, true_output)
+                self.assertEqual(dtype.as_numpy_dtype, out1d.dtype)
+                np.testing.assert_array_equal(op1d.get_shape(), np.array([len(indices)]))
+
+                true_output_2d1 = [np.array(true_output)]
+                np.testing.assert_array_almost_equal(out2d1, true_output_2d1)
+                self.assertEqual(dtype.as_numpy_dtype, out2d1.dtype)
+                np.testing.assert_array_equal(op2d1.get_shape(), np.array([1, len(indices)]))
+
+                if not large_case:
+                    true_output_2d2 = [np.array(true_output) * row1,
+                                       np.array(true_output) * row2,
+                                       np.array(true_output) * row3]
+                    true_shape = np.array([3, len(indices)])
+                else:
+                    true_output_row = np.array(true_output)
+                    for i in range(0, self.num_rows):
+                        params_matrix[i,:] = true_output_row * (i+1)
+                    true_output_2d2 = params_matrix
+                    true_shape = np.array([self.num_rows, len(indices)])
+
+                    # For testing only the overhead time
+                    #true_output_2d2 = true_output
+
+                np.testing.assert_array_almost_equal(out2d2, true_output_2d2)
+                self.assertEqual(dtype.as_numpy_dtype, out2d2.dtype)
+                np.testing.assert_array_equal(op2d2.get_shape(), true_shape)
+
+
+        float_val = 1.23456789
+        int_val = 123456789
+        int_32_upper = 2147483647
+        int_64_upper = 9223372036854775807
+
+
+        # Single column input tensor
+        # float
+        test([float_val],
+             [0],
+             tf.float32,
+             [float_val])
+        test([float_val],
+             [0],
+             tf.float64,
+             [float_val])
+
+        # int
+        test([int_32_upper],
+             [0],
+             tf.int32,
+             [int_32_upper])
+        test([int_64_upper],
+             [0],
+             tf.int64,
+             [int_64_upper])
+
+        # bool
+        test([True],
+             [0],
+             tf.bool,
+             [True])
+
+        # Single index
+        # float
+        test([float_val, float_val*2, float_val*3],
+             [1],
+             tf.float32,
+             [float_val*2])
+        test([float_val, float_val*2, float_val*3],
+             [1],
+             tf.float64,
+             [float_val*2])
+
+        # int
+        test([int_val, int_val*2, int_val*3],
+             [0],
+             tf.int32,
+             [int_val])
+        test([int_val, int_val*2, int_val*3],
+             [2],
+             tf.int64,
+             [int_val*3])
+
+        # bool
+        test([False, True, False],
+             [2],
+             tf.bool,
+             [False])
+
+        # Multiple indices
+        # float
+        test([float_val, float_val*2, float_val*3, float_val*4],
+             [1, 3, 2],
+             tf.float32,
+             [float_val*2, float_val*4, float_val*3])
+        test([float_val, float_val*2, float_val*3, float_val*4],
+             [1, 3, 2],
+             tf.float64,
+             [float_val*2, float_val*4, float_val*3])
+
+        # int
+        test([int_val, int_val*2, int_val*3, int_val*4],
+             [3, 2, 1, 0],
+             tf.int32,
+             [int_val*4, int_val*3, int_val*2, int_val])
+        test([int_val, int_val*2, int_val*3, int_val*4],
+             [2, 1],
+             tf.int64,
+             [int_val*3, int_val*2])
+
+        # bool
+        test([True, True, False, True, False],
+             [2, 1, 4, 0, 3],
+             tf.bool,
+             [False, True, False, True, True])
+        test([False, False, True, True, False, True],
+             [5, 4, 3, 2, 1, 0],
+             tf.bool,
+             [True, False, True, True, False, False])
+
+        # Indices with consecutive columns
+        # Begining
+        test([float_val*1, float_val*2, float_val*3, float_val*4, float_val*5, float_val*6, float_val*7, float_val*8, float_val*9],
+             [4, 5, 6, 8, 2, 0, 3, 1, 7],
+             tf.float32,
+             [float_val*5, float_val*6, float_val*7, float_val*9, float_val*3, float_val*1, float_val*4, float_val*2, float_val*8])
+
+        # Middle
+        test([int_val*1, int_val*2, int_val*3, int_val*4, int_val*5, int_val*6, int_val*7, int_val*8, int_val*9],
+             [3, 5, 6, 7, 4, 0, 1, 2, 8],
+             tf.int32,
+             [int_val*4, int_val*6, int_val*7, int_val*8, int_val*5, int_val*1, int_val*2, int_val*3, int_val*9])
+
+        # End
+        test([int_val*1, int_val*2, int_val*3, int_val*4, int_val*5, int_val*6, int_val*7, int_val*8, int_val*9],
+             [6, 5, 0, 7, 4, 8, 1, 2, 3],
+             tf.int64,
+             [int_val*7, int_val*6, int_val*1, int_val*8, int_val*5, int_val*9, int_val*2, int_val*3, int_val*4])
+
+        # Beginning, middle and end
+        test([int_val*1, int_val*2, int_val*3, int_val*4, int_val*5, int_val*6, int_val*7, int_val*8, int_val*9, int_val*10, int_val*11, int_val*12],
+             [5, 6, 7, 11, 1, 2, 3, 0, 4, 8, 9, 10],
+             tf.int64,
+             [int_val*6, int_val*7, int_val*8, int_val*12, int_val*2, int_val*3, int_val*4, int_val*1, int_val*5, int_val*9, int_val*10, int_val*11])
+
+        # Large case for performance test
+        test(list(range(1, self.num_cols+1)), # [1, 2, 3, ..., n-1, n]
+             list(range(self.num_cols-1, -1, -1)), # [n-1, n-2, n-3, ..., 1, 0]
+             tf.int64,
+             list(range(self.num_cols, 0, -1)), # [n, n-1, n-2, ..., 2, 1]
+             False)
+
+if __name__ == '__main__':
+    unittest.main()
