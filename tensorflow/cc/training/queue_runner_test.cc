@@ -129,9 +129,10 @@ TEST(QueueRunnerTest, QueueClosedCode) {
   GraphDef graph_def = BuildSimpleGraph();
   auto session = BuildSessionAndInitVariable(graph_def);
 
-  QueueRunnerDef queue_runner_def =
-      BuildQueueRunnerDef(kQueueName, {kCountUpToOpName}, kSquareOpName, "",
-                          {Code::OUT_OF_RANGE, Code::CANCELLED});
+  // Start two queues so that multiple threads are in Run.
+  QueueRunnerDef queue_runner_def = BuildQueueRunnerDef(
+      kQueueName, {kCountUpToOpName, kCountUpToOpName}, kSquareOpName, "",
+      {Code::OUT_OF_RANGE, Code::CANCELLED});
 
   std::unique_ptr<QueueRunner> qr;
   TF_EXPECT_OK(QueueRunner::New(queue_runner_def, &qr));
@@ -144,7 +145,22 @@ TEST(QueueRunnerTest, QueueClosedCode) {
   EXPECT_EQ(square_value, 100);
 }
 
-TEST(QueueRunnerDef, CatchErrorInJoin) {
+TEST(QueueRunnerTest, QueueCloseFails) {
+  GraphDef graph_def = BuildSimpleGraph();
+  auto session = BuildSessionAndInitVariable(graph_def);
+
+  QueueRunnerDef queue_runner_def =
+      BuildQueueRunnerDef(kQueueName, {kCountUpToOpName}, kIllegalOpName1, "",
+                          {Code::OUT_OF_RANGE});
+
+  std::unique_ptr<QueueRunner> qr;
+  TF_EXPECT_OK(QueueRunner::New(queue_runner_def, &qr));
+  TF_EXPECT_OK(qr->Start(session.get()));
+  auto status = qr->Join();
+  EXPECT_EQ(status.code(), Code::NOT_FOUND) << status;
+}
+
+TEST(QueueRunnerTest, CatchErrorInJoin) {
   GraphDef graph_def = BuildSimpleGraph();
   auto session = BuildSessionAndInitVariable(graph_def);
 
@@ -310,6 +326,22 @@ TEST(QueueRunnerTest, TestCoordinatorStop) {
 
   TF_EXPECT_OK(coord.RequestStop());
   TF_EXPECT_OK(coord.Join());
+}
+
+TEST(QueueRunnerTest, CallbackCalledOnError) {
+  GraphDef graph_def = BuildSimpleGraph();
+  auto session = BuildSessionAndInitVariable(graph_def);
+
+  QueueRunnerDef queue_runner_def = BuildQueueRunnerDef(
+      kQueueName, {kIllegalOpName1, kIllegalOpName2}, kCountUpToOpName, "", {});
+
+  std::unique_ptr<QueueRunner> qr;
+  TF_EXPECT_OK(QueueRunner::New(queue_runner_def, &qr));
+  bool error_caught = false;
+  qr->AddErrorCallback([&error_caught](const Status&) { error_caught = true; });
+  TF_EXPECT_OK(qr->Start(session.get()));
+  qr->Join();
+  EXPECT_TRUE(error_caught);
 }
 
 }  // namespace

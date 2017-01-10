@@ -583,9 +583,9 @@ Status BaseGPUDeviceFactory::CreateGPUDevice(const SessionOptions& options,
     // may run into trouble later with data transfer operations.  The
     // trouble may manifest as slower than expected performance, or
     // outright failures.
-    LOG(ERROR) << "Could not identify NUMA node of " << name
-               << ", defaulting to 0.  Your kernel may not have been built "
-                  "with NUMA support.";
+    LOG(INFO) << "Could not identify NUMA node of " << name
+              << ", defaulting to 0.  Your kernel may not have been built "
+              << "with NUMA support.";
     numa_node = 0;
   }
 
@@ -750,6 +750,8 @@ std::unique_ptr<std::map<std::pair<int, int>, bool>> GetPeerAccessMap(
 
 Status EnablePeerAccess(gpu::Platform* platform,
                         const std::vector<int>& visible_gpu_order) {
+  int possible_peer_count = 0;
+  int enabled_peer_count = 0;
   for (int i = 0; i < visible_gpu_order.size(); ++i) {
     const int i_gpu_id = visible_gpu_order[i];
     for (int j = 0; j < visible_gpu_order.size(); ++j) {
@@ -762,15 +764,30 @@ Status EnablePeerAccess(gpu::Platform* platform,
           platform->ExecutorForDevice(j_gpu_id).ValueOrDie();
 
       if (from->CanEnablePeerAccessTo(to)) {
+        ++possible_peer_count;
         auto status = from->EnablePeerAccessTo(to);
         if (!status.ok()) {
-          return errors::Internal(status.ToString());
+          LOG(WARNING)
+              << "Unable to enable peer access between device ordinals "
+              << i_gpu_id << " and " << j_gpu_id;
+        } else {
+          ++enabled_peer_count;
         }
       } else {
-        LOG(INFO) << "cannot enable peer access from device ordinal "
-                  << i_gpu_id << " to device ordinal " << j_gpu_id;
+        LOG(INFO) << "Peer access not supported between device ordinals "
+                  << i_gpu_id << " and " << j_gpu_id;
       }
     }
+  }
+
+  // Return an error in the extreme failure case where the driver
+  // reported that peering was possible but not a single peering was
+  // successful.  This is to catch possible system misconfigurations
+  // or more fundamental issues.
+  if (possible_peer_count > 0 && enabled_peer_count == 0) {
+    return errors::Internal(possible_peer_count,
+                            " potential peer access pairs were reported by the "
+                            "driver, but no peering could be enabled.");
   }
   return Status::OK();
 }

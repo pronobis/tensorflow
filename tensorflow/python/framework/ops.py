@@ -43,6 +43,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import versions
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
+from tensorflow.python.util import decorator_utils
 
 
 def _override_helper(clazz_object, operator, func):
@@ -195,9 +196,6 @@ class _TensorLike(object):
 class Tensor(_TensorLike):
   """Represents one of the outputs of an `Operation`.
 
-  *Note:* the `Tensor` class will be replaced by `Output` in the future.
-  Currently these two are aliases for each other.
-
   A `Tensor` is a symbolic handle to one of the outputs of an
   `Operation`. It does not hold the values of that operation's output,
   but instead provides a means of computing those values in a
@@ -243,6 +241,7 @@ class Tensor(_TensorLike):
   @@eval
 
   @@get_shape
+  @@shape
   @@set_shape
 
   """
@@ -336,19 +335,14 @@ class Tensor(_TensorLike):
     """The name of the device on which this tensor will be produced, or None."""
     return self._op.device
 
-  def _shape_as_list(self):
-    if self._shape.ndims is not None:
-      return [dim.value for dim in self._shape.dims]
-    else:
-      return None
-
-  def get_shape(self):
+  @property
+  def shape(self):
     """Returns the `TensorShape` that represents the shape of this tensor.
 
     The shape is computed using shape inference functions that are
-    registered for each `Operation` type using `tf.RegisterShape`.
-    See [`TensorShape`](../../api_docs/python/framework.md#TensorShape) for more
-    details of what a shape represents.
+    registered in the Op for each `Operation`.  See
+    [`TensorShape`](../../api_docs/python/framework.md#TensorShape)
+    for more details of what a shape represents.
 
     The inferred shape of a tensor is used to provide shape
     information without having to launch the graph in a session. This
@@ -358,12 +352,12 @@ class Tensor(_TensorLike):
     ```python
     c = tf.constant([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
 
-    print(c.get_shape())
+    print(c.shape)
     ==> TensorShape([Dimension(2), Dimension(3)])
 
     d = tf.constant([[1.0, 0.0], [0.0, 1.0], [1.0, 0.0], [0.0, 1.0]])
 
-    print(d.get_shape())
+    print(d.shape)
     ==> TensorShape([Dimension(4), Dimension(2)])
 
     # Raises a ValueError, because `c` and `d` do not have compatible
@@ -372,7 +366,7 @@ class Tensor(_TensorLike):
 
     f = tf.matmul(c, d, transpose_a=True, transpose_b=True)
 
-    print(f.get_shape())
+    print(f.shape)
     ==> TensorShape([Dimension(3), Dimension(4)])
     ```
 
@@ -383,8 +377,19 @@ class Tensor(_TensorLike):
 
     Returns:
       A `TensorShape` representing the shape of this tensor.
+
     """
     return self._shape
+
+  def _shape_as_list(self):
+    if self._shape.ndims is not None:
+      return [dim.value for dim in self._shape.dims]
+    else:
+      return None
+
+  def get_shape(self):
+    """Alias of Tensor.shape."""
+    return self.shape
 
   def set_shape(self, shape):
     """Updates the shape of this tensor.
@@ -401,12 +406,12 @@ class Tensor(_TensorLike):
 
     # The height and width dimensions of `image` are data dependent, and
     # cannot be computed without executing the op.
-    print(image.get_shape())
+    print(image.shape)
     ==> TensorShape([Dimension(None), Dimension(None), Dimension(3)])
 
     # We know that each image in this dataset is 28 x 28 pixels.
     image.set_shape([28, 28, 3])
-    print(image.get_shape())
+    print(image.shape)
     ==> TensorShape([Dimension(28), Dimension(28), Dimension(3)])
     ```
 
@@ -576,10 +581,6 @@ class Tensor(_TensorLike):
     return _eval_using_default_session(self, feed_dict, self.graph, session)
 
 
-# TODO(josh11b): Switch everyone from "Tensor" to "Output" to match C++ API.
-Output = Tensor
-
-
 def _TensorTensorConversionFunction(t, dtype=None, name=None, as_ref=False):
   _ = name, as_ref
   if dtype and not dtype.is_compatible_with(t.dtype):
@@ -597,7 +598,6 @@ register_dense_tensor_like_type(Tensor)
 def convert_to_tensor(value,
                       dtype=None,
                       name=None,
-                      as_ref=False,
                       preferred_dtype=None):
   """Converts the given `value` to a `Tensor`.
 
@@ -629,8 +629,50 @@ def convert_to_tensor(value,
     dtype: Optional element type for the returned tensor. If missing, the
       type is inferred from the type of `value`.
     name: Optional name to use if a new `Tensor` is created.
-    as_ref: True if we want the result as a ref tensor. Only used if a new
-      `Tensor` is created.
+    preferred_dtype: Optional element type for the returned tensor,
+      used when dtype is None. In some cases, a caller may not have a
+      dtype in mind when converting to a tensor, so preferred_dtype
+      can be used as a soft preference.  If the conversion to
+      `preferred_dtype` is not possible, this argument has no effect.
+
+  Returns:
+    An `Output` based on `value`.
+
+  Raises:
+    TypeError: If no conversion function is registered for `value`.
+    RuntimeError: If a registered conversion function returns an invalid value.
+
+  """
+  return internal_convert_to_tensor(
+      value=value,
+      dtype=dtype,
+      name=name,
+      preferred_dtype=preferred_dtype,
+      as_ref=False)
+
+
+def internal_convert_to_tensor(value,
+                               dtype=None,
+                               name=None,
+                               as_ref=False,
+                               preferred_dtype=None):
+  """Converts the given `value` to an `Tensor`.
+
+  This function converts Python objects of various types to `Tensor`
+  objects. It accepts `Tensor` objects, numpy arrays, Python lists,
+  and Python scalars. For example:
+
+  This function can be useful when composing a new operation in Python
+  All standard Python op constructors apply this function to each of their
+  Tensor-valued inputs, which allows those ops to accept numpy arrays, Python
+  lists, and scalars in addition to `Tensor` objects.
+
+  Args:
+    value: An object whose type has a registered `Tensor` conversion function.
+    dtype: Optional element type for the returned tensor. If missing, the
+      type is inferred from the type of `value`.
+    name: Optional name to use if a new `Tensor` is created.
+    as_ref: True if we want the mutable view of Variables, if applicable.
     preferred_dtype: Optional element type for the returned tensor,
       used when dtype is None. In some cases, a caller may not have a
       dtype in mind when converting to a tensor, so preferred_dtype
@@ -692,11 +734,11 @@ def convert_to_tensor(value,
                   % (error_prefix, value, type(value)))
 
 
-def convert_n_to_tensor(values,
-                        dtype=None,
-                        name=None,
-                        as_ref=False,
-                        preferred_dtype=None):
+def internal_convert_n_to_tensor(values,
+                                 dtype=None,
+                                 name=None,
+                                 as_ref=False,
+                                 preferred_dtype=None):
   """Converts `values` to a list of `Tensor` objects.
 
   Args:
@@ -727,7 +769,7 @@ def convert_n_to_tensor(values,
   for i, value in enumerate(values):
     n = None if name is None else "%s_%d" % (name, i)
     ret.append(
-        convert_to_tensor(
+        internal_convert_to_tensor(
             value,
             dtype=dtype,
             name=n,
@@ -736,9 +778,67 @@ def convert_n_to_tensor(values,
   return ret
 
 
-def convert_to_tensor_or_indexed_slices(value, dtype=None, name=None,
-                                        as_ref=False):
+def convert_n_to_tensor(values,
+                        dtype=None,
+                        name=None,
+                        preferred_dtype=None):
+  """Converts `values` to a list of `Tensor` objects.
+
+  Args:
+    values: A list of objects that can be consumed by `tf.convert_to_tensor()`.
+    dtype: (Optional.) The required `DType` of the returned `Tensor` objects.
+    name: (Optional.) A name prefix to used when a new `Tensor` is
+      created, in which case element `i` will be given the name `name
+      + '_' + i`.
+    preferred_dtype: Optional element type for the returned tensors,
+      used when dtype is None. In some cases, a caller may not have a
+      dtype in mind when converting to a tensor, so preferred_dtype
+      can be used as a soft preference.  If the conversion to
+      `preferred_dtype` is not possible, this argument has no effect.
+
+  Returns:
+    A list of `Tensor` and/or `IndexedSlices` objects.
+
+  Raises:
+    TypeError: If no conversion function is registered for an element in
+      `values`.
+    RuntimeError: If a registered conversion function returns an invalid
+      value.
+  """
+  return internal_convert_n_to_tensor(values=values,
+                                      dtype=dtype,
+                                      name=name,
+                                      preferred_dtype=preferred_dtype,
+                                      as_ref=False)
+
+
+def convert_to_tensor_or_indexed_slices(value, dtype=None, name=None):
   """Converts the given object to a `Tensor` or an `IndexedSlices`.
+
+  If `value` is an `IndexedSlices` or `SparseTensor` it is returned
+  unmodified. Otherwise, it is converted to a `Tensor` using
+  `convert_to_tensor()`.
+
+  Args:
+    value: An `IndexedSlices`, `SparseTensor`, or an object that can be consumed
+      by `convert_to_tensor()`.
+    dtype: (Optional.) The required `DType` of the returned `Tensor` or
+      `IndexedSlices`.
+    name: (Optional.) A name to use if a new `Tensor` is created.
+
+  Returns:
+    An `Tensor`, `IndexedSlices`, or `SparseTensor` based on `value`.
+
+  Raises:
+    ValueError: If `dtype` does not match the element type of `value`.
+  """
+  return internal_convert_to_tensor_or_indexed_slices(
+      value=value, dtype=dtype, name=name, as_ref=False)
+
+
+def internal_convert_to_tensor_or_indexed_slices(value, dtype=None, name=None,
+                                                 as_ref=False):
+  """Converts the given object to an `Tensor` or an `IndexedSlices`.
 
   If `value` is an `IndexedSlices` or `SparseTensor` it is returned
   unmodified. Otherwise, it is converted to a `Tensor` using
@@ -765,11 +865,14 @@ def convert_to_tensor_or_indexed_slices(value, dtype=None, name=None,
           % (dtypes.as_dtype(dtype).name, value.dtype.name, str(value)))
     return value
   else:
-    return convert_to_tensor(value, dtype=dtype, name=name, as_ref=as_ref)
+    return internal_convert_to_tensor(value,
+                                      dtype=dtype,
+                                      name=name,
+                                      as_ref=as_ref)
 
 
-def convert_n_to_tensor_or_indexed_slices(values, dtype=None, name=None,
-                                          as_ref=False):
+def internal_convert_n_to_tensor_or_indexed_slices(values, dtype=None,
+                                                   name=None, as_ref=False):
   """Converts `values` to a list of `Tensor` or `IndexedSlices` objects.
 
   Any `IndexedSlices` or `SparseTensor` objects in `values` are returned
@@ -803,9 +906,37 @@ def convert_n_to_tensor_or_indexed_slices(values, dtype=None, name=None,
     else:
       n = None if name is None else "%s_%d" % (name, i)
       ret.append(
-          convert_to_tensor_or_indexed_slices(value, dtype=dtype, name=n,
-                                              as_ref=as_ref))
+          internal_convert_to_tensor_or_indexed_slices(
+              value, dtype=dtype, name=n, as_ref=as_ref))
   return ret
+
+
+def convert_n_to_tensor_or_indexed_slices(values, dtype=None, name=None):
+  """Converts `values` to a list of `Output` or `IndexedSlices` objects.
+
+  Any `IndexedSlices` or `SparseTensor` objects in `values` are returned
+  unmodified.
+
+  Args:
+    values: A list of `None`, `IndexedSlices`, `SparseTensor`, or objects that
+      can be consumed by `convert_to_tensor()`.
+    dtype: (Optional.) The required `DType` of the returned `Tensor`
+      `IndexedSlices`.
+    name: (Optional.) A name prefix to used when a new `Tensor` is
+      created, in which case element `i` will be given the name `name
+      + '_' + i`.
+
+  Returns:
+    A list of `Tensor`, `IndexedSlices`, and/or `SparseTensor` objects.
+
+  Raises:
+    TypeError: If no conversion function is registered for an element in
+      `values`.
+    RuntimeError: If a registered conversion function returns an invalid
+      value.
+  """
+  return internal_convert_n_to_tensor_or_indexed_slices(
+      values=values, dtype=dtype, name=name, as_ref=False)
 
 
 def register_tensor_conversion_function(base_type, conversion_func,
@@ -1042,7 +1173,7 @@ class Operation(object):
   def __init__(self, node_def, g, inputs=None, output_types=None,
                control_inputs=None, input_types=None, original_op=None,
                op_def=None):
-    """Creates an `Operation`.
+    r"""Creates an `Operation`.
 
     NOTE: This constructor validates the name of the `Operation` (passed
     as `node_def.name`). Valid `Operation` names match the following
@@ -1313,6 +1444,9 @@ class Operation(object):
   def __str__(self):
     return str(self._node_def)
 
+  def __repr__(self):
+    return "<tf.Operation '%s' type=%s>" % (self.name, self.type)
+
   @property
   def outputs(self):
     """The list of `Tensor` objects representing the outputs of this op."""
@@ -1474,7 +1608,7 @@ class RegisterGradient(object):
   ```python
   @tf.RegisterGradient("Sub")
   def _sub_grad(unused_op, grad):
-    return grad, tf.neg(grad)
+    return grad, tf.negative(grad)
   ```
 
   The decorator argument `op_type` is the string type of an
@@ -1551,28 +1685,35 @@ def get_gradient_function(op):
 _shape_registry = registry.Registry("shape functions")
 _default_shape_function_registry = registry.Registry("default shape functions")
 
+# These are set to common_shapes.call_cpp_shape_fn by op generated code
+# (generated by python_op_gen.cc).
+# It is set outside ops.py to avoid a circular dependency.
+_call_cpp_shape_fn = None
+_call_cpp_shape_fn_and_require_op = None
+
+
+def _set_call_cpp_shape_fn(call_cpp_shape_fn):
+  """Sets default shape fns from passed common_shapes.call_cpp_shape_fn."""
+  global _call_cpp_shape_fn, _call_cpp_shape_fn_and_require_op
+  if _call_cpp_shape_fn:
+    return  # already registered
+
+  def call_without_requiring(op):
+    return call_cpp_shape_fn(op, require_shape_fn=False)
+
+  _call_cpp_shape_fn = call_without_requiring
+
+  def call_with_requiring(op):
+    return call_cpp_shape_fn(op, require_shape_fn=True)
+
+  _call_cpp_shape_fn_and_require_op = call_with_requiring
+
 
 class RegisterShape(object):
-  """A decorator for registering the shape function for an op type.
+  """No longer used.  Was: A decorator for registering a shape function.
 
-  This decorator is only used when defining a new op type. A shape
-  function is a function from an `Operation` object to a list of
-  `TensorShape` objects, with one `TensorShape` for each output of the
-  operation.
-
-  For example, assuming that operations of type `"Sub"` take two
-  inputs `x` and `y`, and return a single output `x - y`, all with the
-  same shape, the following shape function would be registered:
-
-  ```python
-  @tf.RegisterShape("Sub")
-  def _sub_shape(op):
-    return [op.inputs[0].get_shape().merge_with(op.inputs[1].get_shape())]
-  ```
-
-  The decorator argument `op_type` is the string type of an
-  operation. This corresponds to the `OpDef.name` field for the proto
-  that defines the operation.
+  Shape functions must now be registered via the SetShapeFn on the
+  original Op specification in C++.
 
   """
 
@@ -1585,10 +1726,12 @@ class RegisterShape(object):
   def __call__(self, f):
     """Registers "f" as the shape function for "op_type"."""
     if f is None:
+      assert _call_cpp_shape_fn
+
       # None is a special "weak" value that provides a default shape function,
       # and can be overridden by a non-None registration.
       try:
-        _default_shape_function_registry.register(_no_shape_function,
+        _default_shape_function_registry.register(_call_cpp_shape_fn,
                                                   self._op_type)
       except KeyError:
         # Ignore duplicate registrations of the weak value. This can
@@ -1601,10 +1744,6 @@ class RegisterShape(object):
     return f
 
 
-def _no_shape_function(op):
-  return [tensor_shape.unknown_shape() for _ in op.outputs]
-
-
 def set_shapes_for_outputs(op):
   """Uses the registered shape functions to set the shapes for op's outputs."""
   try:
@@ -1613,8 +1752,8 @@ def set_shapes_for_outputs(op):
     try:
       shape_func = _default_shape_function_registry.lookup(op.type)
     except LookupError:
-      raise RuntimeError("No shape function registered for standard op: %s"
-                         % op.type)
+      shape_func = _call_cpp_shape_fn_and_require_op
+
   shapes = shape_func(op)
   if shapes is None:
     raise RuntimeError(
@@ -1691,9 +1830,9 @@ _stats_registry = registry.Registry("statistical functions")
 class RegisterStatistics(object):
   """A decorator for registering the statistics function for an op type.
 
-  This decorator is very similar to the RegisterShapes class, and can be defined
-  for an op type so that it gives a report on the resources used by an instance
-  of an operator, in the form of an OpStats object.
+  This decorator can be defined for an op type so that it gives a
+  report on the resources used by an instance of an operator, in the
+  form of an OpStats object.
 
   Well-known types of statistics include these so far:
 
@@ -1775,6 +1914,18 @@ def get_stats_for_node_def(graph, node, statistic_type):
   return result
 
 
+def _name_from_scope_name(name):
+  """Returns the name of an op given the name of its scope.
+
+  Args:
+    name: the name of the scope.
+
+  Returns:
+    the name of the op (equal to scope name minus any trailing slash).
+  """
+  return name[:-1] if name[-1] == "/" else name
+
+
 class Graph(object):
   """A TensorFlow computation, represented as a dataflow graph.
 
@@ -1826,7 +1977,7 @@ class Graph(object):
   that are identified by name. For convenience when building a large
   graph, collections can store groups of related objects: for
   example, the `tf.Variable` uses a collection (named
-  [`tf.GraphKeys.VARIABLES`](../../api_docs/python/framework.md#GraphKeys)) for
+  [`tf.GraphKeys.GLOBAL_VARIABLES`](../../api_docs/python/framework.md#GraphKeys)) for
   all variables that are created during the construction of a graph. The caller
   may define additional collections by specifying a new name.
 
@@ -2206,7 +2357,7 @@ class Graph(object):
     # If a names ends with a '/' it is a "name scope" and we use it as-is,
     # after removing the trailing '/'.
     if name and name[-1] == "/":
-      name = name[:-1]
+      name = _name_from_scope_name(name)
     else:
       name = self.unique_name(name)
 
@@ -2757,7 +2908,7 @@ class Graph(object):
       if not name:  # Both for name=None and name="" we re-set to empty scope.
         new_stack = None
       elif name and name[-1] == "/":
-        new_stack = name[:-1]
+        new_stack = _name_from_scope_name(name)
       else:
         new_stack = self.unique_name(name)
       self._name_stack = new_stack
@@ -2829,26 +2980,33 @@ class Graph(object):
     `b` and `c` will always be colocated with `a`, no matter where `a`
     is eventually placed.
 
+    **NOTE** Using a colocation scope resets any existing device constraints.
+
+    If `op` is `None` then `ignore_existing` must be `True` and the new
+    scope resets all colocation and device constraints.
+
     Args:
-      op: The op to colocate all created ops with.
+      op: The op to colocate all created ops with, or `None`.
       ignore_existing: If true, only applies colocation of this op within
         the context, rather than applying all colocation properties
-        on the stack.
+        on the stack.  If `op` is `None`, this value must be `True`.
 
     Raises:
-      ValueError: if op is None.
+      ValueError: if op is None but ignore_existing is False.
 
     Yields:
       A context manager that specifies the op with which to colocate
       newly created ops.
 
     """
-    if op is None:
-      raise ValueError("Tried to colocate with None")
+    if op is None and not ignore_existing:
+      raise ValueError(
+          "Trying to reset colocation (op is None) but "
+          "ignore_existing is not True")
 
-    if not isinstance(op, Operation):
+    if op is not None and not isinstance(op, Operation):
       # We always want to colocate with the reference op.
-      op = convert_to_tensor_or_indexed_slices(op, as_ref=True).op
+      op = internal_convert_to_tensor_or_indexed_slices(op, as_ref=True).op
 
     # By default, colocate_with resets the device function stack,
     # since colocate_with is typically used in specific internal
@@ -2864,14 +3022,16 @@ class Graph(object):
       current_stack = self._colocation_stack
       self._colocation_stack = []
 
-    self._colocation_stack.append(op)
+    if op is not None:
+      self._colocation_stack.append(op)
 
     try:
       yield
     finally:
       # Restore device function stack
       self._device_function_stack = device_fn_tmp
-      self._colocation_stack.pop()
+      if op is not None:
+        self._colocation_stack.pop()
 
       # Reset the colocation stack if requested.
       if ignore_existing:
@@ -3823,17 +3983,25 @@ class GraphKeys(object):
 
   The following standard keys are defined:
 
-  * `VARIABLES`: the `Variable` objects that comprise a model, and
-    must be saved and restored together. See
-    [`tf.all_variables()`](../../api_docs/python/state_ops.md#all_variables)
+  * `GLOBAL_VARIABLES`: the default collection of `Variable` objects, shared
+    across distributed environment (model variables are subset of these). See
+    [`tf.global_variables()`](../../api_docs/python/state_ops.md#global_variables)
     for more details.
+    Commonly, all `TRAINABLE_VARIABLES` variables will be in `MODEL_VARIABLES`,
+    and all `MODEL_VARIABLES` variables will be in `GLOBAL_VARIABLES`.
+  * `LOCAL_VARIABLES`: the subset of `Variable` objects that are local to each
+    machine. Usually used for temporarily variables, like counters.
+    Note: use `tf.contrib.framework.local_variable` to add to this collection.
+  * `MODEL_VARIABLES`: the subset of `Variable` objects that are used in the
+    model for inference (feed forward). Note: use
+    `tf.contrib.framework.model_variable` to add to this collection.
   * `TRAINABLE_VARIABLES`: the subset of `Variable` objects that will
     be trained by an optimizer. See
     [`tf.trainable_variables()`](../../api_docs/python/state_ops.md#trainable_variables)
     for more details.
   * `SUMMARIES`: the summary `Tensor` objects that have been created in the
     graph. See
-    [`tf.merge_all_summaries()`](../../api_docs/python/train.md#merge_all_summaries)
+    [`tf.summary.merge_all()`](../../api_docs/python/summary.md#merge_all)
     for more details.
   * `QUEUE_RUNNERS`: the `QueueRunner` objects that are used to
     produce input for a computation. See
@@ -3850,16 +4018,17 @@ class GraphKeys(object):
   * `ACTIVATIONS`: activations of neural network layers
   """
 
-  # Key to collect Variable objects that must be saved and restored
-  # by the model.
-  VARIABLES = "variables"
-  # Key to collect Variable objects that will be trained by the
-  # optimizers.
-  TRAINABLE_VARIABLES = "trainable_variables"
-  # Key to collect local variables that are not saved/restored.
+  # Key to collect Variable objects that are global (shared across machines).
+  # Default collection for all variables, except local ones.
+  GLOBAL_VARIABLES = "variables"
+  # Key to collect local variables that are local to the machine and are not
+  # saved/restored.
   LOCAL_VARIABLES = "local_variables"
   # Key to collect model variables defined by layers.
   MODEL_VARIABLES = "model_variables"
+  # Key to collect Variable objects that will be trained by the
+  # optimizers.
+  TRAINABLE_VARIABLES = "trainable_variables"
   # Key to collect summaries.
   SUMMARIES = "summaries"
   # Key to collect QueueRunners.
@@ -3895,6 +4064,8 @@ class GraphKeys(object):
   # Key to collect all shared resources used in this graph which need to be
   # initialized once per session.
   LOCAL_RESOURCES = "local_resources"
+  # Trainable resource-style variables.
+  TRAINABLE_RESOURCE_VARIABLES = "trainable_resource_variables"
 
   # Key to indicate various ops.
   INIT_OP = "init_op"
@@ -3903,11 +4074,22 @@ class GraphKeys(object):
   READY_FOR_LOCAL_INIT_OP = "ready_for_local_init_op"
   SUMMARY_OP = "summary_op"
   GLOBAL_STEP = "global_step"
+
+  # Used to count the number of evaluations performed during a single evaluation
+  # run.
+  EVAL_STEP = "eval_step"
   TRAIN_OP = "train_op"
 
   # Key for control flow context.
   COND_CONTEXT = "cond_context"
   WHILE_CONTEXT = "while_context"
+
+  @decorator_utils.classproperty
+  def VARIABLES(cls):  # pylint: disable=no-self-argument
+    logging.warning("VARIABLES collection name is deprecated, "
+                    "please use GLOBAL_VARIABLES instead; "
+                    "VARIABLES will be removed after 2017-03-02.")
+    return cls.GLOBAL_VARIABLES
 
 
 def add_to_collection(name, value):
