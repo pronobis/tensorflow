@@ -104,6 +104,7 @@ namespace tensorflow {
           return errors::ResourceExhausted("Could not allocate d_out_indices on device.");
         }
 
+//--Debugging flag disabled by default--//
 #if EXEC_TIME_CALC
         float time_taken;
         cudaEvent_t start,stop;
@@ -118,6 +119,7 @@ namespace tensorflow {
                                                                              pad_elem, out_num_cols, params_cols,
                                                                              output_size, output.data());
 
+//--Debugging flag disabled by default--//
 #if EXEC_TIME_CALC
         cudaEventRecord(stop,0);
         cudaEventSynchronize(stop);
