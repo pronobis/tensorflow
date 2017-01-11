@@ -78,6 +78,7 @@ namespace tensorflow {
           cons_cols_counter[0] = 1;
       }
 
+//--Debugging flag disabled by default--//
 #if EXEC_TIME_CALC
       clock_t start, end;
       float time_taken;
@@ -103,6 +104,7 @@ namespace tensorflow {
         }
       }
 
+//--Debugging flag disabled by default--//
 #if EXEC_TIME_CALC
       end = clock();
       time_taken = (((float)(end-start))/CLOCKS_PER_SEC) * 1000.0; //--Milliseconds//
