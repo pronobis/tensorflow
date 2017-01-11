@@ -5,14 +5,17 @@ import numpy as np
 class TestMath(tf.test.TestCase):
     gather_columns_module = tf.load_op_library('./gather_columns.so')
     num_cols = 1000
-    num_rows = 40000
+    num_rows = 20000
     an_odd_number = 101
+
+    def tearDown(self):
+        tf.reset_default_graph()
 
     def test_gather_columns(self):
 
-        def test(params, indices, dtype, true_output):
+        def test(params, indices, dtype, true_output, use_gpu=False):
 
-            with self.subTest(params=params, indices=indices, dtype=dtype):
+            with self.test_session(use_gpu=use_gpu) as sess:
                 if self.an_odd_number % 2 == 0:
                     self.an_odd_number = self.an_odd_number+1
 
@@ -42,8 +45,7 @@ class TestMath(tf.test.TestCase):
                 for i in range(0, self.an_odd_number):
                     op2d2 = self.gather_columns_module.gather_columns(op2d2, ind)
 
-                with tf.Session() as sess:
-                    out2d2 = sess.run(op2d2)
+                out2d2 = sess.run(op2d2)
 
                 true_output_row = np.array(true_output, dtype=npdtype)
                 for i in range(0, self.num_rows):
@@ -59,7 +61,14 @@ class TestMath(tf.test.TestCase):
         test(list(range(1, self.num_cols+1)), # [1, 2, 3, ..., n-1, n]
              list(range(self.num_cols-1, -1, -1)), # [n-1, n-2, n-3, ..., 1, 0]
              tf.float64,
-             list(range(self.num_cols, 0, -1))) # [n, n-1, n-2, ..., 2, 1]
+             list(range(self.num_cols, 0, -1)), # [n, n-1, n-2, ..., 2, 1]
+             use_gpu=False)
+
+        test(list(range(1, self.num_cols+1)), # [1, 2, 3, ..., n-1, n]
+             list(range(self.num_cols-1, -1, -1)), # [n-1, n-2, n-3, ..., 1, 0]
+             tf.float64,
+             list(range(self.num_cols, 0, -1)), # [n, n-1, n-2, ..., 2, 1]
+             use_gpu=True)
 
 if __name__ == '__main__':
     unittest.main()
