@@ -10,6 +10,7 @@ using namespace std;
 
 namespace tensorflow {
   typedef Eigen::ThreadPoolDevice CPUDevice;
+  typedef Eigen::GpuDevice GPUDevice;
 
   namespace functor {
 
@@ -77,6 +78,13 @@ namespace tensorflow {
           cons_cols_counter[0] = 1;
       }
 
+//--Debugging flag disabled by default--//
+#if EXEC_TIME_CALC
+      clock_t start, end;
+      float time_taken;
+      start = clock();
+#endif // EXEC_TIME_CALC
+
       //--Mem-copy columns, bunching consecutive columns together, one row at a time--//
       for(int row = 0; row < params_rows; row++ )
       {
@@ -95,6 +103,13 @@ namespace tensorflow {
           col += cons_cols_counter[col];
         }
       }
+
+//--Debugging flag disabled by default--//
+#if EXEC_TIME_CALC
+      end = clock();
+      time_taken = (((float)(end-start))/CLOCKS_PER_SEC) * 1000.0; //--Milliseconds//
+      std::cout << "CPU - Time Taken: " << time_taken << " ms" << endl;
+#endif // EXEC_TIME_CALC
 
       return -1;
     }

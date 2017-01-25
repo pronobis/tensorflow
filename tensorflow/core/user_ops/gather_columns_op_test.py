@@ -8,94 +8,114 @@ from tensorflow.python.framework import common_shapes
 class TestMath(tf.test.TestCase):
     gather_columns_module = tf.load_op_library('./gather_columns.so')
     num_cols = 1000
-    num_rows = 50000
+    num_rows = 30000
 
+    def tearDown(self):
+        tf.reset_default_graph()
 
     def testEmptyParams(self):
-      with self.test_session():
+      with self.test_session(use_gpu=False) as sess:
         params = tf.constant([], dtype=tf.int32)
         indices = [1, 2, 3]
         gather = self.gather_columns_module.gather_columns(params, indices)
         with self.assertRaisesOpError("Params cannot be empty."):
-            with tf.Session() as sess:
-                sess.run(gather)
+            sess.run(gather)
 
     def testEmptyIndices(self):
-      with self.test_session():
+      with self.test_session(use_gpu=False) as sess:
         params = [0, 1, 2]
         indices = tf.constant([], dtype=tf.int32)
         gather = self.gather_columns_module.gather_columns(params, indices)
         with self.assertRaisesOpError("Indices cannot be empty."):
-            with tf.Session() as sess:
-                sess.run(gather)
+            sess.run(gather)
 
     def testScalarParams(self):
-      with self.test_session():
+      with self.test_session(use_gpu=False) as sess:
         params = 10
         indices = [1, 2, 3]
         gather = self.gather_columns_module.gather_columns(params, indices)
         with self.assertRaisesOpError("Params must be at least a vector."):
-            with tf.Session() as sess:
-                sess.run(gather)
+            sess.run(gather)
 
     def testScalarIndices(self):
-      with self.test_session():
+      with self.test_session(use_gpu=False) as sess:
         params = [1, 2, 3]
         indices = 1
         gather = self.gather_columns_module.gather_columns(params, indices)
         with self.assertRaisesOpError("Indices must be a vector, but it is a: 0D Tensor."):
-            with tf.Session() as sess:
-                sess.run(gather)
+            sess.run(gather)
 
     def test3DParams(self):
-      with self.test_session():
+      with self.test_session(use_gpu=False) as sess:
         params = [[[0, 1, 2]]]
         indices = [1, 2, 3]
         gather = self.gather_columns_module.gather_columns(params, indices)
         with self.assertRaisesOpError("Params must be 1D or 2D but it is: 3D."):
-            with tf.Session() as sess:
-                sess.run(gather)
+            sess.run(gather)
 
     def test2DIndices(self):
-      with self.test_session():
+      with self.test_session(use_gpu=False) as sess:
         params = [[0, 1, 2]]
         indices = [[1, 2, 3]]
         gather = self.gather_columns_module.gather_columns(params, indices)
         with self.assertRaisesOpError("Indices must be a vector, but it is a: 2D Tensor."):
-            with tf.Session() as sess:
-                sess.run(gather)
+            sess.run(gather)
 
-    def testNegativeIndices(self):
-      with self.test_session():
-        params = [0, 1, 2]
+    def testNegativeIndices_CPU(self):
+      with self.test_session(use_gpu=False) as sess:
+        params = tf.constant([1, 2, 3], dtype=tf.float32)
         indices = [-1]
         gather = self.gather_columns_module.gather_columns(params, indices)
-        with self.assertRaisesOpError("Indices\(0\): -1 is not in range \(0, 3\]."):
-            with tf.Session() as sess:
-                sess.run(gather)
+        with self.assertRaisesOpError("Indices\(0\) is not in range \(0, 3\]."):
+            sess.run(gather)
 
-    def testBadIndices(self):
-      with self.test_session():
+    def testNegativeIndices_GPU(self):
+      with self.test_session(use_gpu=True) as sess:
+        params = tf.constant([1, 2, 3], dtype=tf.float32)
+        indices = [-1]
+        gather = self.gather_columns_module.gather_columns(params, indices)
+        with self.assertRaisesOpError("Indices\(0\) is not in range \(0, 3\]."):
+            sess.run(gather)
+
+    def testBadIndices_CPU(self):
+      with self.test_session(use_gpu=False) as sess:
         params = tf.constant([[1, 2, 3, 4, 5]], dtype=tf.float64)
         indices = tf.constant([2, 1, 10, 1, 2], dtype=tf.int32)
         gather = self.gather_columns_module.gather_columns(params, indices)
-        with self.assertRaisesOpError("Indices\(2\): 10 is not in range \(0, 5\]."):
-            with tf.Session() as sess:
-                sess.run(gather)
+        with self.assertRaisesOpError("Indices\(2\) is not in range \(0, 5\]."):
+            sess.run(gather)
 
+    def testBadIndices_GPU(self):
+      with self.test_session(use_gpu=True) as sess:
+        params = tf.constant([[1, 2, 3, 4, 5]], dtype=tf.float64)
+        indices = tf.constant([2, 1, 10, 1, 2], dtype=tf.int32)
+        gather = self.gather_columns_module.gather_columns(params, indices)
+        with self.assertRaisesOpError("Indices\(2\) is not in range \(0, 5\]."):
+            sess.run(gather)
 
     def test_gather_columns(self):
         ops.RegisterShape("GatherColumns")(common_shapes.call_cpp_shape_fn)
 
-        def test(params, indices, dtype, true_output, large_case=False):
+        def test(params, indices, dtype, true_output, use_gpu=False, large_case=False):
 
-            with self.subTest(params=params, indices=indices, dtype=dtype, large_case=False):
+            with self.test_session(use_gpu=use_gpu) as sess:
                 if dtype == bool:
                     row1 = row2 = row3 = 1
                 else:
                     row1 = 1
                     row2 = 0
                     row3 = -1
+
+                if dtype == tf.bool:
+                    npdtype = np.bool
+                elif dtype == tf.float32:
+                    npdtype = np.float32
+                elif dtype == tf.float64:
+                    npdtype = np.float64
+                elif dtype == tf.int32:
+                    npdtype = np.int32
+                elif dtype == tf.int64:
+                    npdtype = np.int64
 
                 p1d = tf.constant(params, dtype=dtype)
                 p2d1 = tf.constant(np.array([np.array(params)]), dtype=dtype)
@@ -105,8 +125,8 @@ class TestMath(tf.test.TestCase):
                                                  np.array(params) * row2,
                                                  np.array(params) * row3]), dtype=dtype)
                 else:
-                    params_matrix = np.empty([self.num_rows, self.num_cols])
-                    params_row = np.array(params)
+                    params_matrix = np.empty([self.num_rows, self.num_cols], dtype=npdtype)
+                    params_row = np.array(params, dtype=npdtype)
                     for i in range(0, self.num_rows):
                         params_matrix[i,:] = params_row * (i+1)
                     p2d2 = tf.constant(params_matrix, dtype=dtype)
@@ -121,10 +141,9 @@ class TestMath(tf.test.TestCase):
                 op2d1 = self.gather_columns_module.gather_columns(p2d1, ind_32)
                 op2d2 = self.gather_columns_module.gather_columns(p2d2, ind_64)
 
-                with tf.Session() as sess:
-                    out1d = sess.run(op1d)
-                    out2d1 = sess.run(op2d1)
-                    out2d2 = sess.run(op2d2)
+                out1d = sess.run(op1d)
+                out2d1 = sess.run(op2d1)
+                out2d2 = sess.run(op2d2)
 
                 np.testing.assert_array_almost_equal(out1d, true_output)
                 self.assertEqual(dtype.as_numpy_dtype, out1d.dtype)
@@ -141,7 +160,7 @@ class TestMath(tf.test.TestCase):
                                        np.array(true_output) * row3]
                     true_shape = np.array([3, len(indices)])
                 else:
-                    true_output_row = np.array(true_output)
+                    true_output_row = np.array(true_output, dtype=npdtype)
                     for i in range(0, self.num_rows):
                         params_matrix[i,:] = true_output_row * (i+1)
                     true_output_2d2 = params_matrix
@@ -166,117 +185,253 @@ class TestMath(tf.test.TestCase):
         test([float_val],
              [0],
              tf.float32,
-             [float_val])
+             [float_val],
+             use_gpu=False)
         test([float_val],
              [0],
              tf.float64,
-             [float_val])
+             [float_val],
+             use_gpu=False)
+
+        test([float_val],
+             [0],
+             tf.float32,
+             [float_val],
+             use_gpu=True)
+        test([float_val],
+             [0],
+             tf.float64,
+             [float_val],
+             use_gpu=True)
 
         # int
         test([int_32_upper],
              [0],
              tf.int32,
-             [int_32_upper])
+             [int_32_upper],
+             use_gpu=False)
         test([int_64_upper],
              [0],
              tf.int64,
-             [int_64_upper])
+             [int_64_upper],
+             use_gpu=False)
+
+        test([int_32_upper],
+             [0],
+             tf.int32,
+             [int_32_upper],
+             use_gpu=True)
+        test([int_64_upper],
+             [0],
+             tf.int64,
+             [int_64_upper],
+             use_gpu=True)
 
         # bool
         test([True],
              [0],
              tf.bool,
-             [True])
+             [True],
+             use_gpu=False)
+
+        test([True],
+             [0],
+             tf.bool,
+             [True],
+             use_gpu=True)
 
         # Single index
         # float
         test([float_val, float_val*2, float_val*3],
              [1],
              tf.float32,
-             [float_val*2])
+             [float_val*2],
+             use_gpu=False)
         test([float_val, float_val*2, float_val*3],
              [1],
              tf.float64,
-             [float_val*2])
+             [float_val*2],
+             use_gpu=False)
+
+        test([float_val, float_val*2, float_val*3],
+             [1],
+             tf.float32,
+             [float_val*2],
+             use_gpu=True)
+        test([float_val, float_val*2, float_val*3],
+             [1],
+             tf.float64,
+             [float_val*2],
+             use_gpu=True)
 
         # int
         test([int_val, int_val*2, int_val*3],
              [0],
              tf.int32,
-             [int_val])
+             [int_val],
+             use_gpu=False)
         test([int_val, int_val*2, int_val*3],
              [2],
              tf.int64,
-             [int_val*3])
+             [int_val*3],
+             use_gpu=False)
+
+        test([int_val, int_val*2, int_val*3],
+             [0],
+             tf.int32,
+             [int_val],
+             use_gpu=True)
+        test([int_val, int_val*2, int_val*3],
+             [2],
+             tf.int64,
+             [int_val*3],
+             use_gpu=True)
 
         # bool
         test([False, True, False],
              [2],
              tf.bool,
-             [False])
+             [False],
+             use_gpu=False)
+
+        test([False, True, False],
+             [2],
+             tf.bool,
+             [False],
+             use_gpu=True)
 
         # Multiple indices
         # float
         test([float_val, float_val*2, float_val*3, float_val*4],
              [1, 3, 2],
              tf.float32,
-             [float_val*2, float_val*4, float_val*3])
+             [float_val*2, float_val*4, float_val*3],
+             use_gpu=False)
+        test([float_val, float_val*2, float_val*3, float_val*4],
+             [1, 3, 2, 0, 2, 3, 1],
+             tf.float64,
+             [float_val*2, float_val*4, float_val*3, float_val*1, float_val*3, float_val*4, float_val*2],
+             use_gpu=False)
+
         test([float_val, float_val*2, float_val*3, float_val*4],
              [1, 3, 2],
+             tf.float32,
+             [float_val*2, float_val*4, float_val*3],
+             use_gpu=True)
+        test([float_val, float_val*2, float_val*3, float_val*4],
+             [1, 3, 2, 0, 2, 3, 1],
              tf.float64,
-             [float_val*2, float_val*4, float_val*3])
+             [float_val*2, float_val*4, float_val*3, float_val*1, float_val*3, float_val*4, float_val*2],
+             use_gpu=True)
 
         # int
         test([int_val, int_val*2, int_val*3, int_val*4],
-             [3, 2, 1, 0],
+             [3, 2, 1],
              tf.int32,
-             [int_val*4, int_val*3, int_val*2, int_val])
+             [int_val*4, int_val*3, int_val*2],
+             use_gpu=False)
         test([int_val, int_val*2, int_val*3, int_val*4],
-             [2, 1],
+             [3, 2, 1, 0, 1, 2, 3],
              tf.int64,
-             [int_val*3, int_val*2])
+             [int_val*4, int_val*3, int_val*2, int_val*1, int_val*2, int_val*3, int_val*4],
+             use_gpu=False)
+
+        test([int_val, int_val*2, int_val*3, int_val*4],
+             [3, 2, 1],
+             tf.int32,
+             [int_val*4, int_val*3, int_val*2],
+             use_gpu=True)
+        test([int_val, int_val*2, int_val*3, int_val*4],
+             [3, 2, 1, 0, 1, 2, 3],
+             tf.int64,
+             [int_val*4, int_val*3, int_val*2, int_val*1, int_val*2, int_val*3, int_val*4],
+             use_gpu=True)
 
         # bool
         test([True, True, False, True, False],
-             [2, 1, 4, 0, 3],
+             [0, 1, 2, 3, 4],
              tf.bool,
-             [False, True, False, True, True])
+             [True, True, False, True, False],
+             use_gpu=False)
         test([False, False, True, True, False, True],
              [5, 4, 3, 2, 1, 0],
              tf.bool,
-             [True, False, True, True, False, False])
+             [True, False, True, True, False, False],
+             use_gpu=False)
+
+        test([True, True, False, True, False],
+             [0, 1, 2, 3, 4],
+             tf.bool,
+             [True, True, False, True, False],
+             use_gpu=True)
+        test([False, False, True, True, False, True],
+             [5, 4, 3, 2, 1, 0],
+             tf.bool,
+             [True, False, True, True, False, False],
+             use_gpu=True)
 
         # Indices with consecutive columns
         # Begining
         test([float_val*1, float_val*2, float_val*3, float_val*4, float_val*5, float_val*6, float_val*7, float_val*8, float_val*9],
              [4, 5, 6, 8, 2, 0, 3, 1, 7],
              tf.float32,
-             [float_val*5, float_val*6, float_val*7, float_val*9, float_val*3, float_val*1, float_val*4, float_val*2, float_val*8])
+             [float_val*5, float_val*6, float_val*7, float_val*9, float_val*3, float_val*1, float_val*4, float_val*2, float_val*8],
+             use_gpu=False)
+        test([float_val*1, float_val*2, float_val*3, float_val*4, float_val*5, float_val*6, float_val*7, float_val*8, float_val*9],
+             [4, 5, 6, 8, 2, 0, 3, 1, 7],
+             tf.float32,
+             [float_val*5, float_val*6, float_val*7, float_val*9, float_val*3, float_val*1, float_val*4, float_val*2, float_val*8],
+             use_gpu=True)
 
         # Middle
         test([int_val*1, int_val*2, int_val*3, int_val*4, int_val*5, int_val*6, int_val*7, int_val*8, int_val*9],
              [3, 5, 6, 7, 4, 0, 1, 2, 8],
              tf.int32,
-             [int_val*4, int_val*6, int_val*7, int_val*8, int_val*5, int_val*1, int_val*2, int_val*3, int_val*9])
+             [int_val*4, int_val*6, int_val*7, int_val*8, int_val*5, int_val*1, int_val*2, int_val*3, int_val*9],
+             use_gpu=False)
+        test([int_val*1, int_val*2, int_val*3, int_val*4, int_val*5, int_val*6, int_val*7, int_val*8, int_val*9],
+             [3, 5, 6, 7, 4, 0, 1, 2, 8],
+             tf.int32,
+             [int_val*4, int_val*6, int_val*7, int_val*8, int_val*5, int_val*1, int_val*2, int_val*3, int_val*9],
+             use_gpu=True)
 
         # End
         test([int_val*1, int_val*2, int_val*3, int_val*4, int_val*5, int_val*6, int_val*7, int_val*8, int_val*9],
              [6, 5, 0, 7, 4, 8, 1, 2, 3],
              tf.int64,
-             [int_val*7, int_val*6, int_val*1, int_val*8, int_val*5, int_val*9, int_val*2, int_val*3, int_val*4])
+             [int_val*7, int_val*6, int_val*1, int_val*8, int_val*5, int_val*9, int_val*2, int_val*3, int_val*4],
+             use_gpu=False)
+        test([int_val*1, int_val*2, int_val*3, int_val*4, int_val*5, int_val*6, int_val*7, int_val*8, int_val*9],
+             [6, 5, 0, 7, 4, 8, 1, 2, 3],
+             tf.int64,
+             [int_val*7, int_val*6, int_val*1, int_val*8, int_val*5, int_val*9, int_val*2, int_val*3, int_val*4],
+             use_gpu=True)
 
         # Beginning, middle and end
         test([int_val*1, int_val*2, int_val*3, int_val*4, int_val*5, int_val*6, int_val*7, int_val*8, int_val*9, int_val*10, int_val*11, int_val*12],
              [5, 6, 7, 11, 1, 2, 3, 0, 4, 8, 9, 10],
              tf.int64,
-             [int_val*6, int_val*7, int_val*8, int_val*12, int_val*2, int_val*3, int_val*4, int_val*1, int_val*5, int_val*9, int_val*10, int_val*11])
+             [int_val*6, int_val*7, int_val*8, int_val*12, int_val*2, int_val*3, int_val*4, int_val*1, int_val*5, int_val*9, int_val*10, int_val*11],
+             use_gpu=False)
+        test([int_val*1, int_val*2, int_val*3, int_val*4, int_val*5, int_val*6, int_val*7, int_val*8, int_val*9, int_val*10, int_val*11, int_val*12],
+             [5, 6, 7, 11, 1, 2, 3, 0, 4, 8, 9, 10],
+             tf.int64,
+             [int_val*6, int_val*7, int_val*8, int_val*12, int_val*2, int_val*3, int_val*4, int_val*1, int_val*5, int_val*9, int_val*10, int_val*11],
+             use_gpu=True)
 
         # Large case for performance test
         test(list(range(1, self.num_cols+1)), # [1, 2, 3, ..., n-1, n]
              list(range(self.num_cols-1, -1, -1)), # [n-1, n-2, n-3, ..., 1, 0]
-             tf.int64,
+             tf.float64,
              list(range(self.num_cols, 0, -1)), # [n, n-1, n-2, ..., 2, 1]
-             False)
+             use_gpu=False,
+             large_case=True)
+        test(list(range(1, self.num_cols+1)), # [1, 2, 3, ..., n-1, n]
+             list(range(self.num_cols-1, -1, -1)), # [n-1, n-2, n-3, ..., 1, 0]
+             tf.float64,
+             list(range(self.num_cols, 0, -1)), # [n, n-1, n-2, ..., 2, 1]
+             use_gpu=True,
+             large_case=True)
 
 if __name__ == '__main__':
     unittest.main()
