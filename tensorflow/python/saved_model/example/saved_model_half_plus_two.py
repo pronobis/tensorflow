@@ -19,7 +19,9 @@ SavedModel format.
 
 This graph calculates,
   y = a*x + b
-where a and b are variables with a=0.5 and b=2.
+and/or, independently,
+  y2 = a*x2 + c
+where a, b and c are variables with a=0.5 and b=2 and c=3.
 
 Output from this program is typically used to exercise SavedModel load and
 execution code.
@@ -29,16 +31,21 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
 import os
+import sys
+
 import tensorflow as tf
 
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.saved_model import builder as saved_model_builder
 from tensorflow.python.saved_model import signature_constants
+from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import tag_constants
-from tensorflow.python.saved_model import utils
 from tensorflow.python.util import compat
+
+FLAGS = None
 
 
 def _write_assets(assets_directory, assets_filename):
@@ -75,17 +82,21 @@ def _generate_saved_model_for_half_plus_two(export_dir, as_text=False):
     # functionality upon restore.
     a = tf.Variable(0.5, name="a")
     b = tf.Variable(2.0, name="b")
+    c = tf.Variable(3.0, name="c")
 
     # Create a placeholder for serialized tensorflow.Example messages to be fed.
     serialized_tf_example = tf.placeholder(tf.string, name="tf_example")
 
     # Parse the tensorflow.Example looking for a feature named "x" with a single
     # floating point value.
-    feature_configs = {"x": tf.FixedLenFeature([1], dtype=tf.float32),}
+    feature_configs = {"x": tf.FixedLenFeature([1], dtype=tf.float32)}
     tf_example = tf.parse_example(serialized_tf_example, feature_configs)
     # Use tf.identity() to assign name
     x = tf.identity(tf_example["x"], name="x")
-    y = tf.add(tf.mul(a, x), b, name="y")
+    y = tf.add(tf.multiply(a, x), b, name="y")
+
+    x2 = tf.placeholder(tf.float32, name="x2")
+    tf.add(tf.multiply(a, x2), c, name="y2")
 
     # Create an assets file that can be saved and restored as part of the
     # SavedModel.
@@ -97,6 +108,12 @@ def _generate_saved_model_for_half_plus_two(export_dir, as_text=False):
     # Set up the assets collection.
     assets_filepath = tf.constant(original_assets_filepath)
     tf.add_to_collection(tf.GraphKeys.ASSET_FILEPATHS, assets_filepath)
+    filename_tensor = tf.Variable(
+        original_assets_filename,
+        name="filename_tensor",
+        trainable=False,
+        collections=[])
+    assign_filename_op = filename_tensor.assign(original_assets_filename)
 
     # Set up the signature for regression with input and output tensor
     # specification.
@@ -107,30 +124,61 @@ def _generate_saved_model_for_half_plus_two(export_dir, as_text=False):
     output_tensor = meta_graph_pb2.TensorInfo()
     output_tensor.name = tf.identity(y).name
     signature_outputs = {signature_constants.REGRESS_OUTPUTS: output_tensor}
-    signature_def = utils.build_signature_def(
+    signature_def = signature_def_utils.build_signature_def(
         signature_inputs, signature_outputs,
         signature_constants.REGRESS_METHOD_NAME)
 
+    # Set up the signature for Predict with input and output tensor
+    # specification.
+    predict_input_tensor = meta_graph_pb2.TensorInfo()
+    predict_input_tensor.name = x.name
+    predict_signature_inputs = {
+        "x": predict_input_tensor
+    }
+
+    predict_output_tensor = meta_graph_pb2.TensorInfo()
+    predict_output_tensor.name = y.name
+    predict_signature_outputs = {
+        "y": predict_output_tensor
+    }
+    predict_signature_def = signature_def_utils.build_signature_def(
+        predict_signature_inputs, predict_signature_outputs,
+        signature_constants.PREDICT_METHOD_NAME)
+
     # Initialize all variables and then save the SavedModel.
-    sess.run(tf.initialize_all_variables())
+    sess.run(tf.global_variables_initializer())
     builder.add_meta_graph_and_variables(
         sess, [tag_constants.SERVING],
         signature_def_map={
-            signature_constants.REGRESS_METHOD_NAME: signature_def
+            signature_constants.REGRESS_METHOD_NAME:
+                signature_def,
+            signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY:
+                predict_signature_def
         },
-        assets_collection=tf.get_collection(tf.GraphKeys.ASSET_FILEPATHS))
+        assets_collection=tf.get_collection(tf.GraphKeys.ASSET_FILEPATHS),
+        legacy_init_op=tf.group(assign_filename_op))
     builder.save(as_text)
 
 
 def main(_):
-  export_dir_pb = "/tmp/saved_model/half_plus_two"
-  _generate_saved_model_for_half_plus_two(export_dir_pb)
-  print("SavedModel generated at: %s" % export_dir_pb)
+  _generate_saved_model_for_half_plus_two(FLAGS.output_dir)
+  print("SavedModel generated at: %s" % FLAGS.output_dir)
 
-  export_dir_pbtxt = "/tmp/saved_model/half_plus_two_pbtxt"
-  _generate_saved_model_for_half_plus_two(export_dir_pbtxt, as_text=True)
-  print("SavedModel generated at: %s" % export_dir_pbtxt)
+  _generate_saved_model_for_half_plus_two(FLAGS.output_dir_pbtxt, as_text=True)
+  print("SavedModel generated at: %s" % FLAGS.output_dir_pbtxt)
 
 
 if __name__ == "__main__":
-  tf.app.run()
+  parser = argparse.ArgumentParser()
+  parser.add_argument(
+      "--output_dir",
+      type=str,
+      default="/tmp/saved_model_half_plus_two",
+      help="Directory where to ouput SavedModel.")
+  parser.add_argument(
+      "--output_dir_pbtxt",
+      type=str,
+      default="/tmp/saved_model_half_plus_two_pbtxt",
+      help="Directory where to ouput the text format of SavedModel.")
+  FLAGS, unparsed = parser.parse_known_args()
+  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
