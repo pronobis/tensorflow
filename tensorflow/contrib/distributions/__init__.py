@@ -14,16 +14,9 @@
 # ==============================================================================
 """Classes representing statistical distributions and ops for working with them.
 
-## Classes for statistical distributions.
-
-Classes that represent batches of statistical distributions.  Each class is
-initialized with parameters that define the distributions.
-
-## Base classes
+See the @{$python/contrib.distributions} guide.
 
 @@Distribution
-
-## Univariate (scalar) distributions
 
 @@Binomial
 @@Bernoulli
@@ -48,17 +41,11 @@ initialized with parameters that define the distributions.
 @@StudentTWithAbsDfSoftplusSigma
 @@Uniform
 
-## Multivariate distributions
-
-### Multivariate normal
-
 @@MultivariateNormalDiag
 @@MultivariateNormalFull
 @@MultivariateNormalCholesky
 @@MultivariateNormalDiagPlusVDVT
 @@MultivariateNormalDiagWithSoftplusStDev
-
-### Other multivariate distributions
 
 @@Dirichlet
 @@DirichletMultinomial
@@ -66,33 +53,25 @@ initialized with parameters that define the distributions.
 @@WishartCholesky
 @@WishartFull
 
-### Multivariate Utilities
-
 @@matrix_diag_transform
-
-## Transformed distributions
 
 @@TransformedDistribution
 @@QuantizedDistribution
 
-## Mixture Models
-
 @@Mixture
-
-## Posterior inference with conjugate priors.
-
-Functions that transform conjugate prior/likelihood pairs to distributions
-representing the posterior or posterior predictive.
-
-## Normal likelihood with conjugate prior.
 
 @@normal_conjugates_known_sigma_posterior
 @@normal_conjugates_known_sigma_predictive
 
-## Kullback-Leibler Divergence
-
 @@kl
 @@RegisterKL
+
+@@softplus_inverse
+
+@@ExpRelaxedOneHotCategorical
+@@OneHotCategorical
+@@RelaxedBernoulli
+@@RelaxedOneHotCategorical
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -110,6 +89,7 @@ from tensorflow.contrib.distributions.python.ops.dirichlet import *
 from tensorflow.contrib.distributions.python.ops.dirichlet_multinomial import *
 from tensorflow.contrib.distributions.python.ops.distribution import *
 from tensorflow.contrib.distributions.python.ops.distribution_util import matrix_diag_transform
+from tensorflow.contrib.distributions.python.ops.distribution_util import softplus_inverse
 from tensorflow.contrib.distributions.python.ops.exponential import *
 from tensorflow.contrib.distributions.python.ops.gamma import *
 from tensorflow.contrib.distributions.python.ops.inverse_gamma import *
@@ -128,3 +108,12 @@ from tensorflow.contrib.distributions.python.ops.uniform import *
 from tensorflow.contrib.distributions.python.ops.wishart import *
 
 # pylint: enable=unused-import,wildcard-import,line-too-long,g-importing-member
+
+from tensorflow.python.util.all_util import remove_undocumented
+
+_allowed_symbols = ['bijector',
+                    'ConditionalDistribution',
+                    'ConditionalTransformedDistribution',
+                    'FULLY_REPARAMETERIZED', 'NOT_REPARAMETERIZED']
+
+remove_undocumented(__name__, _allowed_symbols)

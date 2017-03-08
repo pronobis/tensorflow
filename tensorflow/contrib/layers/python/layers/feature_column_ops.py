@@ -181,7 +181,7 @@ def _input_from_feature_columns(columns_to_tensors,
           except ValueError as e:
             raise ValueError('Error creating input layer for column: {}.\n'
                              '{}, {}'.format(column.name, e, ee))
-    return array_ops.concat_v2(output_tensors, output_rank - 1)
+    return array_ops.concat(output_tensors, output_rank - 1)
 
 
 def input_from_feature_columns(columns_to_tensors,
@@ -558,7 +558,8 @@ def weighted_sum_from_feature_columns(columns_to_tensors,
       except ValueError as ee:
         raise ValueError('Error creating weighted sum for column: {}.\n'
                          '{}'.format(column.name, ee))
-      output_tensors.append(predictions)
+      output_tensors.append(array_ops.reshape(
+          predictions, shape=(-1, num_outputs)))
       column_to_variable[column] = variable
       _log_variable(variable)
       _maybe_restore_from_checkpoint(column._checkpoint_path(), variable)

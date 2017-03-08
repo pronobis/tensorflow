@@ -14,25 +14,14 @@
 # ==============================================================================
 
 # pylint: disable=g-short-docstring-punctuation
-"""## Sparse Tensor Representation
-
-TensorFlow supports a `SparseTensor` representation for data that is sparse
-in multiple dimensions. Contrast this representation with `IndexedSlices`,
-which is efficient for representing tensors that are sparse in their first
-dimension, and dense along all other dimensions.
+"""Sparse Tensor Representation. See the @{python/sparse_ops} guide.
 
 @@SparseTensor
 @@SparseTensorValue
-
-## Conversion
-
 @@sparse_to_dense
 @@sparse_tensor_to_dense
 @@sparse_to_indicator
 @@sparse_merge
-
-## Manipulation
-
 @@sparse_concat
 @@sparse_reorder
 @@sparse_reshape
@@ -41,18 +30,15 @@ dimension, and dense along all other dimensions.
 @@sparse_reset_shape
 @@sparse_fill_empty_rows
 @@sparse_transpose
-
-## Reduction
 @@sparse_reduce_sum
 @@sparse_reduce_sum_sparse
-
-## Math Operations
 @@sparse_add
 @@sparse_softmax
 @@sparse_tensor_dense_matmul
 @@sparse_maximum
 @@sparse_minimum
 """
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -228,10 +214,10 @@ def sparse_concat(axis,
 
   if expand_nonconcat_dim:
     max_shape = math_ops.reduce_max(
-        array_ops.concat_v2(
+        array_ops.concat(
             [array_ops.reshape(shape, [1, -1]) for shape in shapes], 0), 0)
     shapes = [
-        array_ops.concat_v2([
+        array_ops.concat([
             max_shape[:axis], shape[-1:] if axis == -1 else
             shape[axis:axis + 1], [] if axis == -1 else max_shape[axis + 1:]
         ], 0) for shape in shapes
@@ -856,11 +842,11 @@ def sparse_merge(sp_ids, sp_values, vocab_size, name=None,
     # Slice off the last dimension of indices, then tack on the ids
     indices_columns_to_preserve = array_ops.slice(
         sp_ids.indices, [0, 0], array_ops.stack([-1, rank - 1]))
-    new_indices = array_ops.concat_v2(
+    new_indices = array_ops.concat(
         [indices_columns_to_preserve, array_ops.reshape(ids, [-1, 1])], 1)
 
     new_values = sp_values.values
-    new_shape = array_ops.concat_v2([
+    new_shape = array_ops.concat([
         array_ops.slice(sp_ids.dense_shape, [0],
                         array_ops.expand_dims(rank - 1, 0)),
         math_ops.cast(array_ops.stack([vocab_size]), dtypes.int64)
@@ -1060,16 +1046,16 @@ def sparse_fill_empty_rows(sp_input, default_value, name=None):
         False)
 
     empty_row_indices_as_column = array_ops.reshape(empty_row_indices, [-1, 1])
-    additional_indices = array_ops.concat_v2([
+    additional_indices = array_ops.concat([
         empty_row_indices_as_column,
         array_ops.zeros_like(empty_row_indices_as_column)
     ], 1)
     additional_values = array_ops.fill(
         array_ops.shape(empty_row_indices), default_value)
 
-    all_indices_unordered = array_ops.concat_v2(
+    all_indices_unordered = array_ops.concat(
         [sp_input.indices, additional_indices], 0)
-    all_values_unordered = array_ops.concat_v2(
+    all_values_unordered = array_ops.concat(
         [sp_input.values, additional_values], 0)
     sp_unordered_output = sparse_tensor.SparseTensor(
         all_indices_unordered,

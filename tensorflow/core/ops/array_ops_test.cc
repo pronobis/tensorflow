@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
 
@@ -161,9 +162,9 @@ TEST(ArrayOpsTest, Identity_ShapeFnHandles) {
   // Check that handle dtypes are preserved.
   const OpRegistrationData* op_reg_data;
   TF_ASSERT_OK(OpRegistry::Global()->LookUp(op.name, &op_reg_data));
-  shape_inference::InferenceContext c(&op.node_def, op_reg_data->op_def,
-                                      {TensorShapeProto()}, {}, {}, {},
-                                      {DT_BOOL});
+  shape_inference::InferenceContext c(TF_GRAPH_DEF_VERSION, &op.node_def,
+                                      op_reg_data->op_def, {TensorShapeProto()},
+                                      {}, {}, {}, {DT_BOOL});
   TF_ASSERT_OK(c.construction_status());
   ASSERT_TRUE(op_reg_data->shape_inference_fn != nullptr);
   TF_ASSERT_OK(c.Run(op_reg_data->shape_inference_fn));
@@ -331,6 +332,7 @@ TEST(ArrayOpsTest, PadD_ShapeFn) {
     INFER_OK(op, "[100,200,300];[3,2]", "[111,222,333]");
     INFER_OK(op, "[100,?,300];[3,2]", "[111,?,333]");
     INFER_OK(op, "?;[3,2]", "[?,?,?]");
+    INFER_OK(op, "?;?", "[?,?,?]");
   }
 }
 
@@ -557,7 +559,7 @@ TEST(ArrayOpsTest, Concat_ShapeFn) {
   set_n(4);
   INFER_OK(op, "?;?;?;[1,2,3,4];[4,3,2,1]", "[?,?,?,?]");
   INFER_OK(op, "?;?;?;?;?", "?");  // output rank unknown
-  INFER_ERROR("Can't concatenate scalars (use tf.pack instead)", op,
+  INFER_ERROR("Can't concatenate scalars (use tf.stack instead)", op,
               "?;?;?;[];[]");
   INFER_ERROR("Shape must be rank 2 but is rank 3", op, "?;?;?;[1,2];[1,2,3]");
 
@@ -630,7 +632,7 @@ TEST(ArrayOpsTest, ConcatV2_ShapeFn) {
   set_n(4);
   INFER_OK(op, "?;?;[1,2,3,4];[4,3,2,1];?", "[?,?,?,?]");
   INFER_OK(op, "?;?;?;?;?", "?");  // output rank unknown
-  INFER_ERROR("Can't concatenate scalars (use tf.pack instead)", op,
+  INFER_ERROR("Can't concatenate scalars (use tf.stack instead)", op,
               "?;?;[];[];?");
   INFER_ERROR("Shape must be rank 2 but is rank 3", op, "?;?;[1,2];[1,2,3];?");
 

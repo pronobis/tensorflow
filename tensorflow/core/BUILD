@@ -64,6 +64,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
     "if_ios",
+    "if_not_mobile",
     "if_not_windows",
     "tf_copts",
     "tf_cc_test",
@@ -84,12 +85,14 @@ load(
     "//tensorflow/core:platform/default/build_config.bzl",
     "tf_proto_library",
     "tf_proto_library_cc",
+    "tf_additional_core_deps",
+    "tf_additional_lib_defines",
+    "tf_additional_lib_deps",
     "tf_additional_lib_hdrs",
     "tf_additional_lib_srcs",
     "tf_additional_minimal_lib_srcs",
     "tf_additional_proto_hdrs",
     "tf_additional_proto_srcs",
-    "tf_additional_lib_deps",
     "tf_additional_stream_executor_srcs",
     "tf_additional_cupti_wrapper_deps",
     "tf_additional_libdevice_data",
@@ -98,6 +101,8 @@ load(
     "tf_additional_test_deps",
     "tf_additional_test_srcs",
     "tf_kernel_tests_linkstatic",
+    "tf_additional_cloud_op_deps",
+    "tf_additional_cloud_kernel_deps",
 )
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
@@ -260,6 +265,7 @@ cc_library(
         "platform/subprocess.h",
         "platform/thread_annotations.h",
         "platform/types.h",
+        "platform/windows/cpu_info.h",
     ],
     visibility = ["//visibility:public"],
     deps = [
@@ -317,7 +323,6 @@ tf_cuda_library(
         "framework/op.h",
         "framework/op_def_builder.h",
         "framework/op_def_util.h",
-        "framework/op_gen_lib.h",
         "framework/op_kernel.h",
         "framework/partial_tensor_shape.h",
         "framework/queue_interface.h",
@@ -371,6 +376,25 @@ tf_cuda_library(
     }),
     visibility = ["//visibility:public"],
     deps = [":framework_internal"],
+)
+
+tf_proto_library_cc(
+    name = "op_gen_overrides_proto",
+    srcs = ["framework/op_gen_overrides.proto"],
+    cc_api_version = 2,
+    protodeps = [":protos_all"],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "op_gen_lib",
+    srcs = ["framework/op_gen_lib.cc"],
+    hdrs = ["framework/op_gen_lib.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":lib",
+        ":op_gen_overrides_proto_cc",
+    ],
 )
 
 cc_library(
@@ -452,6 +476,16 @@ cc_library(
 )
 
 cc_library(
+    name = "cloud_ops_op_lib",
+    srcs = ["ops/cloud_ops.cc"],
+    copts = tf_copts(),
+    linkstatic = 1,
+    visibility = ["//visibility:public"],
+    deps = [":framework"],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "ops",
     visibility = ["//visibility:public"],
     deps = [
@@ -481,7 +515,7 @@ cc_library(
         ":training_ops_op_lib",
         ":user_ops_op_lib",
         ":word2vec_ops",
-    ],
+    ] + tf_additional_cloud_op_deps(),
     alwayslink = 1,
 )
 
@@ -603,7 +637,7 @@ cc_library(
         "//tensorflow/core/kernels:string",
         "//tensorflow/core/kernels:training_ops",
         "//tensorflow/core/kernels:word2vec_kernels",
-    ] + if_not_windows([
+    ] + tf_additional_cloud_kernel_deps() + if_not_windows([
         "//tensorflow/core/kernels:fact_op",
         "//tensorflow/core/kernels:array_not_windows",
         "//tensorflow/core/kernels:math_not_windows",
@@ -706,8 +740,7 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
-# Core sources. Should eventually become identical to open source
-# sources.
+# Core sources for Android builds.
 filegroup(
     name = "android_srcs",
     srcs = [
@@ -741,12 +774,14 @@ filegroup(
             "**/*testlib*",
             "**/*main.cc",
             "debug/**/*",
+            "framework/op_gen_*",
             "graph/dot.*",
             "lib/jpeg/**/*",
             "lib/png/**/*",
             "lib/gif/**/*",
             "util/events_writer.*",
             "util/reporter.*",
+            "platform/**/cuda_libdevice_path.*",
             "platform/default/stream_executor.*",
             "platform/default/test_benchmark.*",
             "platform/cuda.h",
@@ -1127,12 +1162,13 @@ cc_library(
         "platform/tracing.h",
     ],
     copts = tf_copts(),
+    defines = tf_additional_lib_defines(),
     linkopts = ["-ldl"],
-    deps = [
+    deps = tf_additional_lib_deps() + [
         ":lib_proto_parsing",
         ":protos_all_cc",
-        "//tensorflow/core/platform/default/build_config:platformlib",
         "//third_party/eigen3",
+        "//tensorflow/core/platform/default/build_config:platformlib",
         "@zlib_archive//:zlib",
     ],
 )
@@ -1215,6 +1251,7 @@ tf_cuda_library(
             "util/reporter.h",
             "util/reporter.cc",
             "framework/fake_input.*",
+            "framework/op_gen_lib.*",
             "util/memmapped_file_system.*",
             "util/memmapped_file_system_writer.*",
             "util/version_info.cc",
@@ -1352,7 +1389,7 @@ tf_cuda_library(
         ":protos_all_cc",
         "//third_party/eigen3",
         "//tensorflow/core/kernels:required",
-    ] + tf_additional_lib_deps(),
+    ] + tf_additional_core_deps(),
     alwayslink = 1,
 )
 
@@ -1788,6 +1825,7 @@ tf_cc_tests(
         ":test_main",
         ":testlib",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/cc:scope",
         "//tensorflow/cc:sendrecv_ops",
         "//tensorflow/core/kernels:ops_util",

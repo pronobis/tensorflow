@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import collections as collections_lib
 import contextlib
+import copy
 import functools
 import traceback
 
@@ -182,21 +183,21 @@ class _VariableStore(object):
     """Create a variable store."""
     self._vars = {}  # A dictionary of the stored TensorFlow variables.
     self._partitioned_vars = {}  # A dict of the stored PartitionedVariables.
-    self._variable_scopes_count = {}  # Count re-used variable scopes.
+    self.variable_scopes_count = {}  # Count re-used variable scopes.
 
   def open_variable_scope(self, scope_name):
-    if scope_name in self._variable_scopes_count:
-      self._variable_scopes_count[scope_name] += 1
+    if scope_name in self.variable_scopes_count:
+      self.variable_scopes_count[scope_name] += 1
     else:
-      self._variable_scopes_count[scope_name] = 1
+      self.variable_scopes_count[scope_name] = 1
 
   def close_variable_subscopes(self, scope_name):
-    for k in self._variable_scopes_count:
+    for k in self.variable_scopes_count:
       if not scope_name or k.startswith(scope_name + "/"):
-        self._variable_scopes_count[k] = 0
+        self.variable_scopes_count[k] = 0
 
   def variable_scope_count(self, scope_name):
-    return self._variable_scopes_count.get(scope_name, 0)
+    return self.variable_scopes_count.get(scope_name, 0)
 
   def get_variable(self, name, shape=None, dtype=dtypes.float32,
                    initializer=None, regularizer=None, reuse=None,
@@ -738,9 +739,9 @@ def no_regularizer(_):
 
 
 class VariableScope(object):
-  """Variable scope object to carry defaults to provide to get_variable.
+  """Variable scope object to carry defaults to provide to `get_variable`.
 
-  Many of the arguments we need for get_variable in a variable store are most
+  Many of the arguments we need for `get_variable` in a variable store are most
   easily handled with a context. This object is used for the defaults.
 
   Attributes:
@@ -990,14 +991,14 @@ get_variable_or_local_docstring = (
 
 %sThis function prefixes the name with the current variable scope
 and performs reuse checks. See the
-[Variable Scope How To](../../how_tos/variable_scope/index.md)
+@{$variable_scope$Variable Scope How To}
 for an extensive description of how reusing works. Here is a basic example:
 
 ```python
 with tf.variable_scope("foo"):
     v = tf.get_variable("v", [1])  # v.name == "foo/v:0"
     w = tf.get_variable("w", [1])  # w.name == "foo/w:0"
-with tf.variable_scope("foo", reuse=True)
+with tf.variable_scope("foo", reuse=True):
     v1 = tf.get_variable("v")  # The same as v above.
 ```
 
@@ -1024,7 +1025,7 @@ Args:
   initializer: Initializer for the variable if one is created.
   regularizer: A (Tensor -> Tensor or None) function; the result of
     applying it on a newly created variable will be added to the collection
-    GraphKeys.REGULARIZATION_LOSSES and can be used for regularization.
+    @{tf.GraphKeys.REGULARIZATION_LOSSES} and can be used for regularization.
   %scollections: List of graph collections keys to add the Variable to.
     Defaults to `[%s]` (see `tf.Variable`).
   caching_device: Optional device string or function describing where the
@@ -1222,6 +1223,7 @@ def _pure_variable_scope(name_or_scope,
   try:
     var_store.open_variable_scope(new_name)
     if isinstance(name_or_scope, VariableScope):
+      old_subscopes = copy.copy(var_store.variable_scopes_count)
       name_scope = name_or_scope._name_scope  # pylint: disable=protected-access
       # Handler for the case when we jump to a shared scope.
       #   We create a new VariableScope (default_varscope[0]) that contains
@@ -1280,6 +1282,9 @@ def _pure_variable_scope(name_or_scope,
       yield default_varscope[0]
   finally:
     var_store.close_variable_subscopes(new_name)
+    # If jumping out from a non-prolonged scope, restore counts.
+    if isinstance(name_or_scope, VariableScope):
+      var_store.variable_scopes_count = old_subscopes
     default_varscope[0] = old
 
 
@@ -1320,7 +1325,7 @@ def variable_scope(name_or_scope,
 
   Variable scope allows to create new variables and to share already created
   ones while providing checks to not create or share by accident. For details,
-  see the [Variable Scope How To](../../how_tos/variable_scope/index.md),
+  see the @{$variable_scope$Variable Scope How To},
   here we present only a few basic examples.
 
   Simple example of how to create a new variable:

@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import copy
 import os
 import re
 import time
@@ -87,8 +86,8 @@ def build_standardized_signature_def(
   if _is_classification_problem(problem_type, input_tensors, output_tensors):
     (_, examples), = input_tensors.items()
     classes = output_tensors.get(prediction_key.PredictionKey.CLASSES)
-    scores = output_tensors.get(prediction_key.PredictionKey.SCORES)
-    if not (classes or scores):
+    scores = _get_classification_scores(output_tensors)
+    if classes is None and scores is None:
       (_, classes), = output_tensors.items()
     return signature_def_utils.classification_signature_def(
         examples, classes, scores)
@@ -101,13 +100,22 @@ def build_standardized_signature_def(
         input_tensors, output_tensors)
 
 
+def _get_classification_scores(output_tensors):
+  scores = output_tensors.get(prediction_key.PredictionKey.SCORES)
+  if scores is None:
+    scores = output_tensors.get(prediction_key.PredictionKey.PROBABILITIES)
+  return scores
+
+
 def _is_classification_problem(problem_type, input_tensors, output_tensors):
   classes = output_tensors.get(prediction_key.PredictionKey.CLASSES)
-  scores = output_tensors.get(prediction_key.PredictionKey.SCORES)
+  scores = _get_classification_scores(output_tensors)
   return ((problem_type == constants.ProblemType.CLASSIFICATION or
            problem_type == constants.ProblemType.LOGISTIC_REGRESSION)
           and len(input_tensors) == 1
-          and (classes or scores or len(output_tensors) == 1))
+          and (classes is not None or
+               scores is not None or
+               len(output_tensors) == 1))
 
 
 def _is_regression_problem(problem_type, input_tensors, output_tensors):
@@ -128,10 +136,15 @@ def get_input_alternatives(input_ops):
   if not features:
     raise ValueError('Features must be defined.')
 
+  # TODO(b/34253951): reinstate the "features" input_signature.
+  # The "features" input_signature, as written, does not work with
+  # SparseTensors.  It is simply commented out as a stopgap, pending discussion
+  # on the bug as to the correct solution.
+
   # Add the "features" input_signature in any case.
   # Note defensive copy because model_fns alter the features dict.
-  input_alternatives[FEATURES_INPUT_ALTERNATIVE_KEY] = (
-      copy.copy(features))
+  # input_alternatives[FEATURES_INPUT_ALTERNATIVE_KEY] = (
+  #    copy.copy(features))
 
   return input_alternatives, features
 
@@ -163,6 +176,8 @@ def get_output_alternatives(
   # interpret the model as single-headed of unknown type.
   default_problem_type = constants.ProblemType.UNSPECIFIED
   default_outputs = model_fn_ops.predictions
+  if not isinstance(default_outputs, dict):
+    default_outputs = {prediction_key.PredictionKey.GENERIC: default_outputs}
   actual_default_output_alternative_key = DEFAULT_OUTPUT_ALTERNATIVE_KEY
   output_alternatives = {actual_default_output_alternative_key:
                          (default_problem_type, default_outputs)}
@@ -182,9 +197,10 @@ def build_all_signature_defs(input_alternatives, output_alternatives,
       in output_alternatives.items()}
 
   # Add the default SignatureDef
-  default_inputs = input_alternatives[DEFAULT_INPUT_ALTERNATIVE_KEY]
+  default_inputs = input_alternatives.get(DEFAULT_INPUT_ALTERNATIVE_KEY)
   if not default_inputs:
-    default_inputs = input_alternatives[FEATURES_INPUT_ALTERNATIVE_KEY]
+    raise ValueError('A default input_alternative must be provided.')
+    # default_inputs = input_alternatives[FEATURES_INPUT_ALTERNATIVE_KEY]
   # default outputs are guaranteed to exist above
   (default_problem_type, default_outputs) = (
       output_alternatives[actual_default_output_alternative_key])
@@ -252,7 +268,7 @@ def garbage_collect_exports(export_dir_base, exports_to_keep):
 def make_export_strategy(export_input_fn,
                          default_output_alternative_key='default',
                          assets_extra=None,
-                         export_as_text=False,
+                         as_text=False,
                          exports_to_keep=None):
   """Create an ExportStrategy for use with Experiment."""
 
@@ -263,7 +279,7 @@ def make_export_strategy(export_input_fn,
         export_input_fn,
         default_output_alternative_key=default_output_alternative_key,
         assets_extra=assets_extra,
-        export_as_text=export_as_text,
+        as_text=as_text,
         exports_to_keep=exports_to_keep)
 
     garbage_collect_exports(export_dir_base, exports_to_keep)

@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
-#include "tensorflow/compiler/xla/legacy_flags/llvm_backend_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -608,12 +607,25 @@ TEST_F(ScalarComputationsTest, ComplicatedArithmeticExpressionS32) {
   ComputeAndCompareR0<int32>(&b, 10, {});
 }
 
+TEST_F(ScalarComputationsTest, SqrtF320) {
+  ComputationBuilder builder(client_, TestName());
+  Literal zero_literal = LiteralUtil::Zero(PrimitiveType::F32);
+
+  std::unique_ptr<GlobalData> zero_data =
+      client_->TransferToServer(zero_literal).ConsumeValueOrDie();
+
+  ComputationDataHandle zero =
+      builder.Parameter(0, zero_literal.shape(), "zero");
+  builder.SqrtF32(zero);
+
+  ComputeAndCompareR0<float>(&builder, 0.0f, {zero_data.get()}, error_spec_);
+}
+
 }  // namespace
 }  // namespace xla
 
 int main(int argc, char** argv) {
   std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendLlvmBackendFlags(&flag_list);
   xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);

@@ -45,6 +45,7 @@ py_library(
         ":check_ops",
         ":client",
         ":client_testlib",
+        ":cloud_ops",
         ":confusion_matrix",
         ":control_flow_ops",
         ":errors",
@@ -75,8 +76,10 @@ py_library(
         ":ops",
         ":test_ops",  # TODO: Break testing code out into separate rule.
         ":util",
+        ":weights_broadcast_ops",
         "//third_party/py/numpy",
         "//tensorflow/python/ops/losses",
+        "//tensorflow/python/saved_model",
     ] + if_not_windows([
         "//tensorflow/contrib:contrib_py",
     ]),
@@ -117,6 +120,38 @@ py_library(
     srcs = ["platform/googletest.py"],
     srcs_version = "PY2AND3",
     deps = [":platform_benchmark"],
+)
+
+py_library(
+    name = "cloud_ops",
+    srcs = [
+        "ops/cloud/__init__.py",
+        "ops/cloud/bigquery_reader_ops.py",
+        "ops/cloud/cloud.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":cloud_ops_gen",
+        ":framework_for_generated_wrappers",
+    ],
+)
+
+tf_py_test(
+    name = "bigquery_reader_ops_test",
+    size = "small",
+    srcs = ["ops/cloud/bigquery_reader_ops_test.py"],
+    additional_deps = [
+        ":array_ops",
+        ":client_testlib",
+        ":cloud_ops",
+        ":data_flow_ops",
+        ":io_ops",
+        ":parsing_ops",
+        ":util",
+        "//tensorflow/core/kernels/cloud:bigquery_reader_ops",
+        "//tensorflow/core:cloud_ops_op_lib",
+    ],
+    tags = ["manual"],
 )
 
 tf_py_test(
@@ -280,6 +315,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:framework",
+        "//tensorflow/core:op_gen_lib",
         "//tensorflow/core:protos_cc",
     ],
     alwayslink = 1,
@@ -543,6 +579,7 @@ py_test(
         ":nn_grad",
         ":nn_ops",
         ":random_ops",
+        ":test_ops",
         ":variables",
         "//tensorflow/core:protos_all_py",
         "//third_party/py/numpy",
@@ -788,6 +825,11 @@ tf_gen_op_wrapper_private_py(
     name = "candidate_sampling_ops_gen",
     require_shape_functions = True,
     visibility = ["//learning/brain/python/ops:__pkg__"],
+)
+
+tf_gen_op_wrapper_private_py(
+    name = "cloud_ops_gen",
+    require_shape_functions = True,
 )
 
 tf_gen_op_wrapper_private_py(
@@ -1515,6 +1557,21 @@ py_library(
 )
 
 py_library(
+    name = "weights_broadcast_ops",
+    srcs = [
+        "ops/weights_broadcast_ops.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":control_flow_ops",
+        ":framework",
+        ":math_ops",
+        ":sets",
+    ],
+)
+
+py_library(
     name = "metrics",
     srcs = [
         "ops/metrics.py",
@@ -1536,6 +1593,7 @@ py_library(
         ":util",
         ":variable_scope",
         ":variables",
+        ":weights_broadcast_ops",
     ],
 )
 
@@ -2431,6 +2489,22 @@ py_test(
     ],
 )
 
+cuda_py_test(
+    name = "adam_test",
+    size = "small",
+    srcs = ["training/adam_test.py"],
+    additional_deps = [
+        ":array_ops",
+        ":framework",
+        ":math_ops",
+        ":platform",
+        ":training",
+        ":platform_test",
+        ":client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
 cuda_py_tests(
     name = "training_tests",
     size = "small",
@@ -2438,7 +2512,6 @@ cuda_py_tests(
         "training/adadelta_test.py",
         "training/adagrad_da_test.py",
         "training/adagrad_test.py",
-        "training/adam_test.py",
         "training/basic_loops_test.py",
         "training/coordinator_test.py",
         "training/device_setter_test.py",
@@ -2452,7 +2525,6 @@ cuda_py_tests(
         "training/proximal_gradient_descent_test.py",
         "training/queue_runner_test.py",
         "training/rmsprop_test.py",
-        "training/saver_test.py",
         "training/slot_creator_test.py",
         "training/tensorboard_logging_test.py",
         "training/training_ops_test.py",
@@ -2483,6 +2555,41 @@ cuda_py_tests(
         ":sparse_ops",
         ":state_ops",
         ":state_ops_gen",
+        ":summary",
+        ":training",
+        ":util",
+        ":variable_scope",
+        ":variables",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
+        "//tensorflow/core:protos_all_py",
+    ],
+)
+
+cuda_py_test(
+    name = "saver_test",
+    size = "medium",
+    srcs = [
+        "training/saver_test.py",
+    ],
+    additional_deps = [
+        ":array_ops",
+        ":client_testlib",
+        ":control_flow_ops",
+        ":data_flow_ops",
+        ":data_flow_ops_gen",
+        ":errors",
+        ":gradients",
+        ":math_ops",
+        ":nn_grad",
+        ":nn_ops",
+        ":partitioned_variables",
+        ":platform",
+        ":platform_test",
+        ":pywrap_tensorflow",
+        ":random_ops",
+        ":resource_variable_ops",
+        ":sparse_ops",
         ":summary",
         ":training",
         ":util",

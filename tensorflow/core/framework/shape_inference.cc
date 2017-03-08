@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/shape_inference.h"
 
+#include "tensorflow/core/framework/node_def.pb_text.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -28,13 +29,14 @@ constexpr int32 InferenceContext::kUnknownRank;
 constexpr int64 InferenceContext::kUnknownDim;
 
 InferenceContext::InferenceContext(
-    const NodeDef* node_def, const OpDef& op_def,
+    int graph_def_version, const NodeDef* node_def, const OpDef& op_def,
     const std::vector<TensorShapeProto>& input_shapes,
     const std::vector<const Tensor*>& input_tensors,
     const std::vector<TensorShapeProto>& input_tensors_as_shapes,
     const std::vector<TensorShapeProto>& input_handle_shapes,
     const std::vector<DataType>& input_handle_dtypes)
-    : node_def_(*CHECK_NOTNULL(node_def)) {
+    : graph_def_version_(graph_def_version),
+      node_def_(*CHECK_NOTNULL(node_def)) {
   std::vector<ShapeHandle> input_tensors_as_shape_handles;
   for (const TensorShapeProto& p : input_tensors_as_shapes) {
     ShapeHandle shape;
@@ -67,21 +69,21 @@ InferenceContext::InferenceContext(
 }
 
 InferenceContext::InferenceContext(
-    const NodeDef* node_def, const OpDef& op_def,
+    int graph_def_version, const NodeDef* node_def, const OpDef& op_def,
     const std::vector<ShapeHandle>& input_shapes,
     const std::vector<const Tensor*>& input_tensors,
     const std::vector<ShapeHandle>& input_tensors_as_shapes,
     const std::vector<ShapeHandle>& input_handle_shapes,
     const std::vector<DataType>& input_handle_dtypes)
-    : node_def_(*CHECK_NOTNULL(node_def)) {
+    : graph_def_version_(graph_def_version),
+      node_def_(*CHECK_NOTNULL(node_def)) {
   PreInputInit(op_def, input_tensors, input_tensors_as_shapes);
   if (!construction_status_.ok()) return;
   inputs_ = input_shapes;
   PostInputInit(input_handle_shapes, input_handle_dtypes);
 }
 
-InferenceContext::~InferenceContext() {
-}
+InferenceContext::~InferenceContext() {}
 
 Status InferenceContext::set_output(StringPiece output_name,
                                     const std::vector<ShapeHandle>& shapes) {
@@ -229,6 +231,11 @@ string InferenceContext::DebugString(ShapeHandle s) {
 
 string InferenceContext::DebugString(DimensionHandle d) {
   return ValueKnown(d) ? strings::StrCat(Value(d)) : "?";
+}
+
+string InferenceContext::DebugString() const {
+  return strings::StrCat("InferenceContext for node: ",
+                         ProtoDebugString(node_def_));
 }
 
 Status InferenceContext::WithRank(ShapeHandle shape, int32 rank,

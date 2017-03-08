@@ -519,7 +519,7 @@ class InlineBijectorTest(test.TestCase):
   def testShapeGetters(self):
     with self.test_session():
       bijector = bijectors.Inline(
-          forward_event_shape_fn=lambda x: array_ops.concat_v2((x, [1]), 0),
+          forward_event_shape_fn=lambda x: array_ops.concat((x, [1]), 0),
           get_forward_event_shape_fn=lambda x: x.as_list() + [1],
           inverse_event_shape_fn=lambda x: x[:-1],
           get_inverse_event_shape_fn=lambda x: x[:-1],
@@ -1301,7 +1301,7 @@ class AffineBijectorTest(test.TestCase):
   def _matrix_diag(self, d):
     """Batch version of np.diag."""
     orig_shape = d.shape
-    d = np.reshape(d, (np.prod(d.shape[:-1]), d.shape[-1]))
+    d = np.reshape(d, (int(np.prod(d.shape[:-1])), d.shape[-1]))
     diag_list = []
     for i in range(d.shape[0]):
       diag_list.append(np.diag(d[i, ...]))

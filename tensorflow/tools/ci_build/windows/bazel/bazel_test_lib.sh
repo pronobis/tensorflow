@@ -121,7 +121,7 @@ function get_failing_cpu_py_tests() {
     //$1/tensorflow/python:session_test + \
     //$1/tensorflow/python:supervisor_test + \
     //$1/tensorflow/python:sync_replicas_optimizer_test + \
-    //$1/tensorflow/python/debug/... + \
+    //$1/tensorflow/python/debug:curses_ui_test + \
     //$1/tensorflow/python/kernel_tests:as_string_op_test + \
     //$1/tensorflow/python/kernel_tests:benchmark_test + \
     //$1/tensorflow/python/kernel_tests:cast_op_test + \
@@ -165,7 +165,16 @@ function clean_output_base() {
 }
 
 function run_configure_for_cpu_build {
+  # Due to a bug in Bazel: https://github.com/bazelbuild/bazel/issues/2182
+  # yes "" | ./configure doesn't work on Windows, so we set all the
+  # environment variables in advance to avoid interact with the script.
   export TF_NEED_CUDA=0
+  if [ -z "$TF_ENABLE_XLA" ]; then
+    export TF_ENABLE_XLA=0
+  fi
+  if [ -z "$CC_OPT_FLAGS" ]; then
+    export CC_OPT_FLAGS="-march=native"
+  fi
   echo "" | ./configure
 }
 
@@ -179,6 +188,12 @@ function run_configure_for_gpu_build {
   export TF_CUDNN_VERSION=5
   export CUDNN_INSTALL_PATH="C:/tools/cuda"
   export TF_CUDA_COMPUTE_CAPABILITIES="3.5,5.2"
+  if [ -z "$TF_ENABLE_XLA" ]; then
+    export TF_ENABLE_XLA=0
+  fi
+  if [ -z "$CC_OPT_FLAGS" ]; then
+    export CC_OPT_FLAGS="-march=native"
+  fi
   echo "" | ./configure
 }
 
